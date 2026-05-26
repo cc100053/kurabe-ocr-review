@@ -64,3 +64,22 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 .empty { color: var(--muted); padding: 40px 0; text-align: center; }
 .note { color: var(--muted); font-size: 12px; margin-top: 16px; }
+
+.badge.ok { color: #5ad17a; border-color: #5ad17a; }
+
+.note-form { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.note-form select,
+.note-form input,
+.note-form button {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+.note-form input[name="linked_pr_url"] { width: 90px; }
+.note-form input[name="note"] { width: 130px; }
+.note-form button { cursor: pointer; background: var(--panel); }
+.note-form button:hover { border-color: var(--accent); }
+.note-saved { color: #5ad17a; font-weight: 700; }
