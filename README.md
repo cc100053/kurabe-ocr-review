@@ -3,7 +3,7 @@
 Internal dashboard for the Kurabe OCR closed-loop review (see
 `docs/ocr_closed_loop_review.md` in the main app repo). Reads three Postgres
 views on the Kurabe Supabase project via the **service_role** key (server-side
-only) and is gated behind HTTP Basic auth.
+only) and is gated behind **Vercel Authentication** (Deployment Protection).
 
 ## Pages
 
@@ -14,9 +14,9 @@ only) and is gated behind HTTP Basic auth.
 ## Local dev
 
 ```bash
-cp .env.example .env.local   # fill in SUPABASE_SERVICE_ROLE_KEY + REVIEW_BASIC_PASS
+cp .env.example .env.local   # fill in SUPABASE_SERVICE_ROLE_KEY
 npm install
-npm run dev                  # http://localhost:3000
+npm run dev                  # http://localhost:3000 (no auth on localhost)
 ```
 
 ## Env vars
@@ -25,14 +25,16 @@ npm run dev                  # http://localhost:3000
 |---|---|
 | `SUPABASE_URL` | `https://lgwdwfotnwfparvxqqnq.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | **secret**, full DB access, server-only — never `NEXT_PUBLIC_` |
-| `REVIEW_BASIC_USER` / `REVIEW_BASIC_PASS` | Basic-auth gate; if unset the site fails closed (503) |
 
 ## Deploy (Vercel)
 
-Connected to GitHub → push to `main` deploys production, PRs get preview URLs.
-Set the four env vars in the Vercel project (Production + Preview).
+Connected to GitHub → push to `master` deploys production, PRs get preview URLs.
+Set the two env vars in the Vercel project (Production + Preview).
 
 ## Security
 
-`service_role` bypasses RLS, so this dashboard must never be public. The Basic
-auth middleware gates every route and fails closed when credentials are unset.
+`service_role` bypasses RLS, so this dashboard must never be public. Access is
+gated by **Vercel Authentication** (Settings → Deployment Protection): only
+members of the Vercel team who are logged in can reach any deployment. There is
+no app-level auth, so keep Deployment Protection enabled. On localhost the app
+is unprotected — only run `npm run dev` on a trusted machine.
