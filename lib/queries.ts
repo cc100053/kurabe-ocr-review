@@ -1,12 +1,26 @@
 import { getSupabaseAdmin } from "./supabase";
 
+// Per-field summary: answers "which field is worst / is it improving".
+export type FieldOverview = {
+  field_name: string;
+  total: number;
+  corrected: number;
+  correction_rate: number | null;
+  total_7d: number;
+  corrected_7d: number;
+  correction_rate_7d: number | null;
+  total_30d: number;
+  corrected_30d: number;
+};
+
+// One recurring AI→saved confusion pair, with true time-windowed recurrence.
 export type ConfusionRow = {
   field_name: string;
   ai_value: string | null;
   saved_value: string | null;
   sample_count: number;
-  corrected_count: number;
-  correction_rate: number | null;
+  count_7d: number;
+  count_30d: number;
   last_seen_at: string;
 };
 
@@ -32,28 +46,34 @@ export type SuspiciousRow = {
   ai_value: string | null;
   guarded_value: string | null;
   saved_value: string | null;
+  evidence_text: string | null;
   risk_flags: unknown;
 };
 
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-
 // "Upgrade rule" from the review doc: same confusion pair recurring >= 3 times
-// within a week is worth promoting to a deterministic guard / prompt fix.
+// within the last 7 days → consider a deterministic guard / prompt fix. Now a
+// true rolling window (count_7d), not an all-time count.
 export function isUpgradeCandidate(row: ConfusionRow): boolean {
-  const recent = Date.now() - new Date(row.last_seen_at).getTime() < SEVEN_DAYS_MS;
-  return recent && row.corrected_count >= 3;
+  return row.count_7d >= 3;
+}
+
+export async function getFieldOverview(): Promise<FieldOverview[]> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("scan_field_correction_overview")
+    .select("*")
+    .order("correction_rate", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as FieldOverview[];
 }
 
 export async function getConfusion(): Promise<ConfusionRow[]> {
   const { data, error } = await getSupabaseAdmin()
     .from("scan_field_confusion_summary")
     .select("*")
-    .order("corrected_count", { ascending: false })
-    .order("sample_count", { ascending: false });
+    .order("sample_count", { ascending: false })
+    .order("count_7d", { ascending: false });
   if (error) throw error;
-  return (data ?? []).filter(
-    (r) => (r.ai_value ?? "") !== (r.saved_value ?? ""),
-  ) as ConfusionRow[];
+  return (data ?? []) as ConfusionRow[];
 }
 
 export async function getCorrectionSamples(

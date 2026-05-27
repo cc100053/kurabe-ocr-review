@@ -58,6 +58,7 @@ export default async function SuspiciousPage({
               <th>Field</th>
               <th>AI</th>
               <th>Saved</th>
+              <th>Evidence</th>
               <th>Risk flags</th>
               <th>Status</th>
               <th>Triage</th>
@@ -77,6 +78,9 @@ export default async function SuspiciousPage({
                   <td>{r.field_name}</td>
                   <td className="mono">{r.ai_value ?? "∅"}</td>
                   <td className="mono">{r.saved_value ?? "∅"}</td>
+                  <td className="evidence" title={r.evidence_text ?? ""}>
+                    {r.evidence_text ?? "—"}
+                  </td>
                   <td>
                     {high ? <span className="badge danger">HIGH</span> : null}{" "}
                     <span className="mono">{fl.join(", ")}</span>

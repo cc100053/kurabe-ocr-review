@@ -11,8 +11,9 @@ export default function Home() {
       </p>
       <ul>
         <li>
-          <Link href="/confusion">Confusion summary</Link> — AI value vs final
-          saved value per field; find recurring wrong→right pairs.
+          <Link href="/confusion">Confusion summary</Link> — per-field correction
+          rate (which field is worst) + recurring AI→saved pairs with true 7d/30d
+          recurrence and an UPGRADE flag.
         </li>
         <li>
           <Link href="/correction-samples">Correction samples</Link> — raw

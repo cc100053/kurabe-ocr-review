@@ -83,3 +83,13 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .note-form button { cursor: pointer; background: var(--panel); }
 .note-form button:hover { border-color: var(--accent); }
 .note-saved { color: #5ad17a; font-weight: 700; }
+
+.evidence {
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 12px;
+}
+h2 { color: var(--text); }
