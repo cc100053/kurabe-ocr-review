@@ -36,6 +36,7 @@ export type CorrectionSample = {
   guard_reason: string | null;
   risk_flags: unknown;
   changed_after_guard: string | null;
+  image_url: string | null;
 };
 
 export type SuspiciousRow = {
@@ -48,6 +49,7 @@ export type SuspiciousRow = {
   saved_value: string | null;
   evidence_text: string | null;
   risk_flags: unknown;
+  image_url: string | null;
 };
 
 // "Upgrade rule" from the review doc: same confusion pair recurring >= 3 times

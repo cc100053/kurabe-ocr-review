@@ -1,6 +1,7 @@
 import { getSuspicious } from "@/lib/queries";
 import { getNotesMap, noteKey } from "@/lib/notes";
 import { NoteForm, StatusBadge } from "../NoteForm";
+import { ScanThumb } from "../ScanThumb";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,7 @@ export default async function SuspiciousPage({
           <thead>
             <tr>
               <th>When</th>
+              <th>Image</th>
               <th>Product</th>
               <th>Field</th>
               <th>AI</th>
@@ -74,6 +76,7 @@ export default async function SuspiciousPage({
               return (
                 <tr key={i}>
                   <td className="mono">{new Date(r.occurred_at).toISOString().slice(0, 16).replace("T", " ")}</td>
+                  <td><ScanThumb url={r.image_url} /></td>
                   <td>{r.product_name ?? "—"}</td>
                   <td>{r.field_name}</td>
                   <td className="mono">{r.ai_value ?? "∅"}</td>
