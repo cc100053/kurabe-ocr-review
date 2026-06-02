@@ -69,6 +69,18 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 h2.section { font-size: 14px; color: var(--muted); margin: 4px 0 10px; }
 
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.clear-btn {
+  cursor: pointer;
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.clear-btn:hover { border-color: var(--danger); color: var(--danger); }
+
 /* ---- Review queue: image-forward cards ---- */
 .cards {
   display: grid;

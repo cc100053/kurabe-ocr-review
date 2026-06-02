@@ -5,7 +5,9 @@ import {
   verdictFromNote,
   isResolved,
   resolutionLabel,
+  getQueueClearedAt,
 } from "@/lib/notes";
+import { clearQueue } from "./actions";
 import { QueueCard } from "./QueueCard";
 
 export const dynamic = "force-dynamic";
@@ -31,9 +33,19 @@ export default async function ReviewQueue({
   searchParams: Promise<{ field?: string; view?: string }>;
 }) {
   const { field = "all", view = "todo" } = await searchParams;
-  const [queue, notes] = await Promise.all([getReviewQueue(), getNotesMap()]);
+  const [queue, notes, clearedAt] = await Promise.all([
+    getReviewQueue(),
+    getNotesMap(),
+    getQueueClearedAt(),
+  ]);
 
-  const decorated = queue.map((item) => {
+  // "Clear queue" baseline: only show cases that occurred after it.
+  const clearedMs = clearedAt ? new Date(clearedAt).getTime() : 0;
+  const fresh = queue.filter(
+    (item) => new Date(item.occurred_at).getTime() > clearedMs,
+  );
+
+  const decorated = fresh.map((item) => {
     const note = item.scan_id
       ? notes.get(noteKey(item.scan_id, item.field))
       : undefined;
@@ -57,14 +69,26 @@ export default async function ReviewQueue({
 
   const todoCount = decorated.filter((d) => !d.resolved).length;
 
+  const clearedLabel = clearedAt
+    ? new Date(clearedAt).toISOString().slice(0, 16).replace("T", " ")
+    : null;
+
   return (
     <main>
-      <h1>審查佇列</h1>
+      <div className="page-head">
+        <h1>審查佇列</h1>
+        <form action={clearQueue}>
+          <button className="clear-btn" type="submit">
+            清空佇列（之後只睇新 case）
+          </button>
+        </form>
+      </div>
       <p className="subtitle">
         睇住相,判斷 AI 讀嘅值啱定錯。淨係要肉眼審嘅 case
         會喺度;統計同 pattern 分析交俾 AI 讀(見「統計」)。
         <br />
         仲有 <b>{todoCount}</b> 個未審。
+        {clearedLabel ? `（已清空至 ${clearedLabel} UTC,只顯示之後嘅新 case）` : null}
       </p>
 
       <div className="filters">

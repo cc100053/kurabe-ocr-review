@@ -48,6 +48,26 @@ export function noteKey(scanId: string | null, field: string | null): string {
   return `${scanId ?? ""}::${field ?? ""}`;
 }
 
+// A "clear the queue" baseline, stored as a sentinel row in scan_review_notes
+// (no extra table). After clearing, the queue only shows cases that occurred
+// after this timestamp — so the reviewer starts fresh and sees only new issues.
+// The sentinel scan_id never matches a real scan, so it shows no card.
+export const QUEUE_CONFIG = {
+  scanId: "__config__",
+  field: "queue_cleared_at",
+} as const;
+
+export async function getQueueClearedAt(): Promise<string | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("scan_review_notes")
+    .select("note")
+    .eq("scan_id", QUEUE_CONFIG.scanId)
+    .eq("field", QUEUE_CONFIG.field)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.note ?? null;
+}
+
 // All notes, keyed by scan_id::field, so pages can pre-fill forms in one query.
 export async function getNotesMap(): Promise<Map<string, ReviewNote>> {
   const { data, error } = await getSupabaseAdmin()
