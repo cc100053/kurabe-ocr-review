@@ -1,4 +1,10 @@
-import { fieldLabel, riskReasons, type QueueItem } from "@/lib/queries";
+import {
+  fieldLabel,
+  riskReasons,
+  isPriceField,
+  taxBasisFromEvidence,
+  type QueueItem,
+} from "@/lib/queries";
 import type { Verdict } from "@/lib/notes";
 import { VerdictButtons } from "./VerdictButtons";
 
@@ -55,11 +61,19 @@ export function QueueCard({
             : "∅";
           const aiRead = item.ai_value || "∅";
           const differ = (item.saved_value ?? "") !== item.ai_value;
+          // 含稅/不含稅 tag for price fields, derived from the tag evidence.
+          const tax = isPriceField(item.field)
+            ? taxBasisFromEvidence(item.hint)
+            : null;
           return (
             <div className="vals">
               <div className="final-val">
                 最終存：<b>{final}</b>
-                {!differ ? <span className="muted">（AI 讀,未改）</span> : null}
+                {tax ? (
+                  <span className={`tax-tag${tax.conflict ? " conflict" : ""}`}>
+                    {tax.label}
+                  </span>
+                ) : null}
               </div>
               {differ ? (
                 <div className="ai-orig muted">AI 原讀：{aiRead}</div>
