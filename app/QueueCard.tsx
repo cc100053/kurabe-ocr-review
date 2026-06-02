@@ -1,4 +1,4 @@
-import { fieldLabel, type QueueItem } from "@/lib/queries";
+import { fieldLabel, riskReasons, type QueueItem } from "@/lib/queries";
 import type { Verdict } from "@/lib/notes";
 import { VerdictButtons } from "./VerdictButtons";
 
@@ -58,7 +58,20 @@ export function QueueCard({
           ) : null}
         </div>
 
-        {item.hint ? <div className="hint">⚐ {item.hint}</div> : null}
+        {item.risk_flags.length > 0 ? (
+          <ul className="risks">
+            {riskReasons(item.risk_flags).map((r) => (
+              <li key={r.flag} className={r.high ? "high" : ""}>
+                {r.high ? "⚠️ 核對：" : "・"}
+                {r.label}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {item.hint ? (
+          <div className="hint">⚐ 標籤：{item.hint.replace(/\s*\n\s*/g, " / ")}</div>
+        ) : null}
 
         {item.scan_id ? (
           <VerdictButtons
