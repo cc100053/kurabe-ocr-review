@@ -1,34 +1,95 @@
-import Link from "next/link";
+import { getReviewQueue, fieldLabel } from "@/lib/queries";
+import { getNotesMap, noteKey, verdictFromNote } from "@/lib/notes";
+import { QueueCard } from "./QueueCard";
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
+const FIELDS = ["all", "category", "grams", "price", "discount"] as const;
+const VIEWS = [
+  { key: "todo", label: "待審" },
+  { key: "high", label: "高風險" },
+  { key: "done", label: "已審" },
+  { key: "all", label: "全部" },
+] as const;
+
+// "price" filter also matches original_price (same human concept: 價格).
+function fieldMatches(itemField: string, filter: string): boolean {
+  if (filter === "all") return true;
+  if (filter === "price") return itemField === "price" || itemField === "original_price";
+  return itemField === filter;
+}
+
+export default async function ReviewQueue({
+  searchParams,
+}: {
+  searchParams: Promise<{ field?: string; view?: string }>;
+}) {
+  const { field = "all", view = "todo" } = await searchParams;
+  const [queue, notes] = await Promise.all([getReviewQueue(), getNotesMap()]);
+
+  const decorated = queue.map((item) => ({
+    item,
+    verdict: item.scan_id
+      ? verdictFromNote(notes.get(noteKey(item.scan_id, item.field)))
+      : null,
+  }));
+
+  const rows = decorated.filter(({ item, verdict }) => {
+    if (!fieldMatches(item.field, field)) return false;
+    if (view === "todo") return verdict == null;
+    if (view === "done") return verdict != null;
+    if (view === "high") return item.high_risk && verdict == null;
+    return true; // all
+  });
+
+  const todoCount = decorated.filter((d) => d.verdict == null).length;
+
   return (
     <main>
-      <h1>OCR Closed-Loop Review</h1>
+      <h1>審查佇列</h1>
       <p className="subtitle">
-        Reads live telemetry from the Kurabe project via the three review views.
+        睇住相,判斷 AI 讀嘅值啱定錯。淨係要肉眼審嘅 case
+        會喺度;統計同 pattern 分析交俾 AI 讀(見「統計」)。
+        <br />
+        仲有 <b>{todoCount}</b> 個未審。
       </p>
-      <ul>
-        <li>
-          <Link href="/confusion">Confusion summary</Link> — per-field correction
-          rate (which field is worst) + recurring AI→saved pairs with true 7d/30d
-          recurrence and an UPGRADE flag.
-        </li>
-        <li>
-          <Link href="/correction-samples">Correction samples</Link> — raw
-          user-change events with guard action / reason / evidence.
-        </li>
-        <li>
-          <Link href="/suspicious">Suspicious untouched</Link> — risk-flagged by
-          the guard but the user never changed it (silent-wrong blind spots).
-        </li>
-      </ul>
-      <p className="note">
-        Review questions per pass: which field has the highest correction rate?
-        Same pattern or scattered? Prompt vs guard vs OCR ambiguity? Any
-        high-risk untouched case? Fix prompt, add guard, or just add a test?
-      </p>
+
+      <div className="filters">
+        {VIEWS.map((v) => (
+          <a
+            key={v.key}
+            href={`/?view=${v.key}&field=${field}`}
+            className={v.key === view ? "active" : ""}
+          >
+            {v.label}
+          </a>
+        ))}
+      </div>
+      <div className="filters">
+        {FIELDS.map((f) => (
+          <a
+            key={f}
+            href={`/?view=${view}&field=${f}`}
+            className={f === field ? "active" : ""}
+          >
+            {f === "all" ? "全部欄位" : fieldLabel(f)}
+          </a>
+        ))}
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="empty">
+          {view === "todo" || view === "high"
+            ? "🎉 冇嘢要審。"
+            : "冇符合嘅 case。"}
+        </p>
+      ) : (
+        <div className="cards">
+          {rows.map(({ item, verdict }, i) => (
+            <QueueCard key={`${item.scan_id}-${item.field}-${i}`} item={item} verdict={verdict} />
+          ))}
+        </div>
+      )}
     </main>
   );
 }

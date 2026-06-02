@@ -16,10 +16,9 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <nav>
-          <span className="brand">🔍 Kurabe OCR Review</span>
-          <Link href="/confusion">Confusion</Link>
-          <Link href="/correction-samples">Correction Samples</Link>
-          <Link href="/suspicious">Suspicious Untouched</Link>
+          <span className="brand">🔍 Kurabe OCR 審查</span>
+          <Link href="/">審查佇列</Link>
+          <Link href="/stats">統計</Link>
         </nav>
         <div className="container">{children}</div>
       </body>

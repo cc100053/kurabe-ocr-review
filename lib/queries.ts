@@ -59,6 +59,115 @@ export function isUpgradeCandidate(row: ConfusionRow): boolean {
   return row.count_7d >= 3;
 }
 
+// Higher-risk flags to surface first (price/tax/food per the review doc).
+export const HIGH_RISK = new Set([
+  "bundle_price_detected",
+  "single_item_price_missing",
+  "tax_inclusive_exclusive_conflict",
+  "price_outlier_vs_visible_candidates",
+  "food_tax_risk",
+]);
+
+// Human-friendly field labels — the console is for eyeballing, not column names.
+export function fieldLabel(field: string | null): string {
+  switch (field) {
+    case "category":
+      return "分類";
+    case "grams":
+      return "重量";
+    case "price":
+    case "original_price":
+      return "價格";
+    case "discount":
+      return "折扣";
+    default:
+      return field ?? "—";
+  }
+}
+
+function toFlags(v: unknown): string[] {
+  return Array.isArray(v) ? v.map(String) : [];
+}
+
+function fmtValue(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+// One unified card for the human review queue. We merge two sources:
+//  - "suspicious": guard flagged a risk but the user never changed it → maybe
+//    silently wrong, only a human looking at the photo can tell.
+//  - "corrected":  AI gave a value and the user overrode it → confirm the final
+//    saved value is right.
+// Everything a human needs to adjudicate, nothing else (stats live on /stats).
+export type QueueSource = "suspicious" | "corrected";
+
+export type QueueItem = {
+  source: QueueSource;
+  scan_id: string | null;
+  field: string;
+  product_name: string | null;
+  image_url: string | null;
+  ai_value: string; // what the AI read
+  saved_value: string | null; // what was finally saved (only differs when corrected)
+  hint: string | null; // evidence text or guard reason — a short eyeball aid
+  risk_flags: string[];
+  high_risk: boolean;
+  occurred_at: string;
+};
+
+// The single feed behind the review queue. High-risk first, then newest.
+export async function getReviewQueue(): Promise<QueueItem[]> {
+  const [suspicious, corrected] = await Promise.all([
+    getSuspicious(),
+    getCorrectionSamples(),
+  ]);
+
+  const items: QueueItem[] = [];
+
+  for (const r of suspicious) {
+    const flags = toFlags(r.risk_flags);
+    items.push({
+      source: "suspicious",
+      scan_id: r.scan_id,
+      field: r.field_name,
+      product_name: r.product_name,
+      image_url: r.image_url,
+      ai_value: r.ai_value ?? "",
+      saved_value: r.saved_value,
+      hint: r.evidence_text,
+      risk_flags: flags,
+      high_risk: flags.some((f) => HIGH_RISK.has(f)),
+      occurred_at: r.occurred_at,
+    });
+  }
+
+  for (const r of corrected) {
+    if (!r.field_name) continue;
+    const flags = toFlags(r.risk_flags);
+    items.push({
+      source: "corrected",
+      scan_id: r.scan_id,
+      field: r.field_name,
+      product_name: r.product_name,
+      image_url: r.image_url,
+      ai_value: fmtValue(r.ai_value),
+      saved_value: fmtValue(r.current_value),
+      hint: r.guard_reason,
+      risk_flags: flags,
+      high_risk: flags.some((f) => HIGH_RISK.has(f)),
+      occurred_at: r.occurred_at,
+    });
+  }
+
+  items.sort((a, b) => {
+    if (a.high_risk !== b.high_risk) return a.high_risk ? -1 : 1;
+    return b.occurred_at.localeCompare(a.occurred_at);
+  });
+  return items;
+}
+
 export async function getFieldOverview(): Promise<FieldOverview[]> {
   const { data, error } = await getSupabaseAdmin()
     .from("scan_field_correction_overview")

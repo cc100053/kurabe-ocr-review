@@ -29,9 +29,13 @@ npm run build                # must pass before pushing
 - All pages are `export const dynamic = "force-dynamic"` — the dashboard reads live data every request, never statically cached.
 - `lib/supabase.ts` — `getSupabaseAdmin()` builds a **service_role** client lazily and is marked `import "server-only"`. It must never be imported into a client component.
 - `lib/queries.ts` — reads the review views (see below).
-- `lib/notes.ts` + `app/actions.ts` — read/write `scan_review_notes` (triage). `upsertReviewNote` is a server action invoked from a plain `<form action={...}>`, so no client JS.
-- `app/NoteForm.tsx` — server component: inline triage form + status badge.
-- Pages: `app/confusion`, `app/correction-samples`, `app/suspicious`, `app/page.tsx`.
+- `lib/notes.ts` + `app/actions.ts` — read/write `scan_review_notes`. The human verdict is one-tap: `setVerdict` (a server action from a plain `<form action={...}>`, no client JS) maps ✓correct→`wontfix`, ✗wrong→`triaged`, 🤷cannot_tell→`wontfix`+`root_cause=ocr`, and stamps `reviewed_by="human"` to distinguish eyeball verdicts from AI/skill notes. `verdictFromNote()` maps a note back to the verdict.
+- `app/QueueCard.tsx` + `app/VerdictButtons.tsx` — server components: the image-forward review card and its verdict buttons.
+- Pages: `app/page.tsx` (the review queue — the only human-facing surface) and `app/stats/page.tsx` (compact big-picture: which field is worst + recurring errors; mostly for AI to read).
+
+### Design intent
+
+The human's only irreducible job is **eyeballing a scan image and judging whether the AI's value is right**. So the queue (`/`) merges the two views that need eyes — `scan_field_suspicious_untouched` (flagged, never corrected → maybe silently wrong) and `scan_field_correction_samples` (user overrode AI) — into image-forward cards with one-tap verdicts, high-risk first, defaulting to the "待審 / unreviewed" filter. Everything statistical (correction rates, recurring patterns, guard reasons) is left for AI to read off the views directly; only a slim glance lives on `/stats`. Keep new UI minimal: show only what a human needs to adjudicate.
 
 ### Data it reads (defined in the APP repo, not here)
 

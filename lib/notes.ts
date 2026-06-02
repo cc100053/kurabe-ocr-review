@@ -10,8 +10,23 @@ export type ReviewNote = {
   root_cause: RootCause | null;
   linked_pr_url: string | null;
   note: string | null;
+  reviewed_by: string | null;
   updated_at: string;
 };
+
+// The human eyeball verdict. Stored inside the existing scan_review_notes
+// schema (no migration): correct → wontfix, wrong → triaged, cannot_tell →
+// wontfix+ocr. reviewed_by="human" distinguishes these from AI/skill notes.
+export type Verdict = "correct" | "wrong" | "cannot_tell";
+
+export function verdictFromNote(note?: ReviewNote): Verdict | null {
+  if (!note || note.reviewed_by !== "human") return null;
+  if (note.status === "triaged") return "wrong";
+  if (note.status === "wontfix") {
+    return note.root_cause === "ocr" ? "cannot_tell" : "correct";
+  }
+  return null;
+}
 
 export function noteKey(scanId: string | null, field: string | null): string {
   return `${scanId ?? ""}::${field ?? ""}`;
@@ -21,7 +36,9 @@ export function noteKey(scanId: string | null, field: string | null): string {
 export async function getNotesMap(): Promise<Map<string, ReviewNote>> {
   const { data, error } = await getSupabaseAdmin()
     .from("scan_review_notes")
-    .select("scan_id, field, status, root_cause, linked_pr_url, note, updated_at");
+    .select(
+      "scan_id, field, status, root_cause, linked_pr_url, note, reviewed_by, updated_at",
+    );
   if (error) throw error;
   const map = new Map<string, ReviewNote>();
   for (const row of (data ?? []) as ReviewNote[]) {
