@@ -12,8 +12,8 @@ const VERDICT_MAP: Record<
   Verdict,
   { status: string; root_cause: string | null; note: string }
 > = {
-  correct: { status: "wontfix", root_cause: null, note: "✅ 人手覆核：AI 正確（誤報）" },
-  wrong: { status: "triaged", root_cause: null, note: "❌ 人手覆核：AI 錯誤，待修" },
+  correct: { status: "wontfix", root_cause: null, note: "✅ 人手覆核：存咗嘅值正確" },
+  wrong: { status: "triaged", root_cause: null, note: "❌ 人手覆核：存咗嘅值錯誤，待修" },
   cannot_tell: {
     status: "wontfix",
     root_cause: "ocr",

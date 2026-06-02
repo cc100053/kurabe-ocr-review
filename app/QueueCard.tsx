@@ -46,17 +46,27 @@ export function QueueCard({
           </span>
         </div>
 
-        <div className="vals">
-          <div className="ai-val">
-            AI 讀：<b>{item.ai_value || "∅"}</b>
-          </div>
-          {item.source === "corrected" &&
-          item.saved_value !== item.ai_value ? (
-            <div className="saved-val">
-              用戶改成：<b>{item.saved_value || "∅"}</b>
+        {(() => {
+          // The verdict judges the FINAL stored value (= saved_value), whether
+          // it came from the AI or a user edit. Show the AI's original read as
+          // muted context only when it differs.
+          const final = item.saved_value && item.saved_value !== ""
+            ? item.saved_value
+            : "∅";
+          const aiRead = item.ai_value || "∅";
+          const differ = (item.saved_value ?? "") !== item.ai_value;
+          return (
+            <div className="vals">
+              <div className="final-val">
+                最終存：<b>{final}</b>
+                {!differ ? <span className="muted">（AI 讀,未改）</span> : null}
+              </div>
+              {differ ? (
+                <div className="ai-orig muted">AI 原讀：{aiRead}</div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
+          );
+        })()}
 
         {item.risk_flags.length > 0 ? (
           <ul className="risks">
@@ -74,11 +84,14 @@ export function QueueCard({
         ) : null}
 
         {item.scan_id ? (
-          <VerdictButtons
-            scanId={item.scan_id}
-            field={item.field}
-            current={verdict}
-          />
+          <div className="verdict-block">
+            <div className="ask">存咗嘅值啱唔啱？</div>
+            <VerdictButtons
+              scanId={item.scan_id}
+              field={item.field}
+              current={verdict}
+            />
+          </div>
         ) : (
           <div className="hint muted">無 scan_id，無法記錄</div>
         )}
