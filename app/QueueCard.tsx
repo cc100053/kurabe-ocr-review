@@ -9,12 +9,14 @@ import { VerdictButtons } from "./VerdictButtons";
 export function QueueCard({
   item,
   verdict,
+  aiResolved,
 }: {
   item: QueueItem;
   verdict: Verdict | null;
+  aiResolved: string | null;
 }) {
   return (
-    <article className={`card${verdict ? " decided" : ""}`}>
+    <article className={`card${verdict || aiResolved ? " decided" : ""}`}>
       {item.image_url ? (
         <a
           className="card-img"
@@ -33,6 +35,7 @@ export function QueueCard({
       <div className="card-body">
         <div className="card-head">
           <span className="product">{item.product_name ?? "（無名）"}</span>
+          {aiResolved ? <span className="badge ok">{aiResolved}</span> : null}
           {item.high_risk ? <span className="badge danger">高風險</span> : null}
         </div>
 

@@ -1,5 +1,11 @@
 import { getReviewQueue, fieldLabel } from "@/lib/queries";
-import { getNotesMap, noteKey, verdictFromNote } from "@/lib/notes";
+import {
+  getNotesMap,
+  noteKey,
+  verdictFromNote,
+  isResolved,
+  resolutionLabel,
+} from "@/lib/notes";
 import { QueueCard } from "./QueueCard";
 
 export const dynamic = "force-dynamic";
@@ -27,22 +33,29 @@ export default async function ReviewQueue({
   const { field = "all", view = "todo" } = await searchParams;
   const [queue, notes] = await Promise.all([getReviewQueue(), getNotesMap()]);
 
-  const decorated = queue.map((item) => ({
-    item,
-    verdict: item.scan_id
-      ? verdictFromNote(notes.get(noteKey(item.scan_id, item.field)))
-      : null,
-  }));
+  const decorated = queue.map((item) => {
+    const note = item.scan_id
+      ? notes.get(noteKey(item.scan_id, item.field))
+      : undefined;
+    return {
+      item,
+      verdict: verdictFromNote(note),
+      resolved: isResolved(note),
+      // Badge only when it was resolved by the loop, not a human verdict —
+      // a human verdict already shows via the highlighted button.
+      aiResolved: verdictFromNote(note) ? null : resolutionLabel(note),
+    };
+  });
 
-  const rows = decorated.filter(({ item, verdict }) => {
+  const rows = decorated.filter(({ item, resolved }) => {
     if (!fieldMatches(item.field, field)) return false;
-    if (view === "todo") return verdict == null;
-    if (view === "done") return verdict != null;
-    if (view === "high") return item.high_risk && verdict == null;
+    if (view === "todo") return !resolved;
+    if (view === "done") return resolved;
+    if (view === "high") return item.high_risk && !resolved;
     return true; // all
   });
 
-  const todoCount = decorated.filter((d) => d.verdict == null).length;
+  const todoCount = decorated.filter((d) => !d.resolved).length;
 
   return (
     <main>
@@ -85,8 +98,13 @@ export default async function ReviewQueue({
         </p>
       ) : (
         <div className="cards">
-          {rows.map(({ item, verdict }, i) => (
-            <QueueCard key={`${item.scan_id}-${item.field}-${i}`} item={item} verdict={verdict} />
+          {rows.map(({ item, verdict, aiResolved }, i) => (
+            <QueueCard
+              key={`${item.scan_id}-${item.field}-${i}`}
+              item={item}
+              verdict={verdict}
+              aiResolved={aiResolved}
+            />
           ))}
         </div>
       )}

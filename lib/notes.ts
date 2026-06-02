@@ -28,6 +28,22 @@ export function verdictFromNote(note?: ReviewNote): Verdict | null {
   return null;
 }
 
+// A case is "handled" once any note moves it off `open` — whether that was a
+// human eyeball verdict OR the AI review loop (fixed/wontfix/triaged). Handled
+// cases drop out of the 待審 queue so the human isn't re-asked to judge work
+// that's already done.
+export function isResolved(note?: ReviewNote): boolean {
+  return !!note && note.status !== "open";
+}
+
+// Short "who·status" badge for a case resolved by the AI loop (not a human
+// verdict), so the human can see it's already handled and by whom.
+export function resolutionLabel(note?: ReviewNote): string | null {
+  if (!isResolved(note)) return null;
+  const who = note!.reviewed_by === "human" ? "人手" : "AI";
+  return `${who}・${note!.status}`;
+}
+
 export function noteKey(scanId: string | null, field: string | null): string {
   return `${scanId ?? ""}::${field ?? ""}`;
 }
