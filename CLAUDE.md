@@ -31,7 +31,8 @@ npm run build                # must pass before pushing
 - `lib/queries.ts` — reads the review views (see below).
 - `lib/notes.ts` + `app/actions.ts` — read/write `scan_review_notes`. The human verdict is one-tap: `setVerdict` (a server action from a plain `<form action={...}>`, no client JS) maps ✓correct→`wontfix`, ✗wrong→`triaged`, 🤷cannot_tell→`wontfix`+`root_cause=ocr`, and stamps `reviewed_by="human"` to distinguish eyeball verdicts from AI/skill notes. `verdictFromNote()` maps a note back to the verdict.
 - `app/QueueCard.tsx` + `app/VerdictButtons.tsx` — server components: the image-forward review card and its verdict buttons.
-- Pages: `app/page.tsx` (the review queue — the only human-facing surface) and `app/stats/page.tsx` (compact big-picture: which field is worst + recurring errors; mostly for AI to read).
+- `lib/receiptQueries.ts` — reads the two receipt-scan review views (see below).
+- Pages: `app/page.tsx` (the review queue — the only human-facing surface), `app/stats/page.tsx` (compact big-picture: which field is worst + recurring errors; mostly for AI to read), and `app/receipt/page.tsx` (receipt-scan stats: receipts have no guard pass and no per-line photo, so there is nothing to eyeball case-by-case — this page is purely statistical, mirroring /stats).
 
 ### Design intent
 
@@ -48,6 +49,8 @@ this repo. This repo only consumes them:
 - `scan_field_correction_samples` — raw `scan_field_user_changed` events.
 - `scan_field_suspicious_untouched` — risk-flagged but uncorrected, with `evidence_text`.
 - `scan_review_notes` — triage status/root_cause/PR link/note per `scan_id+field`.
+- `receipt_field_confusion_summary` — receipt-scan AI→saved pairs per field (category/name/price/tax_basis), with `corrected_count`/`correction_rate`.
+- `receipt_field_correction_samples` — receipt lines the user edited; each field stored as a `{ai, saved}` json object plus a `changed_fields` flag map.
 
 If you change a view's columns, that migration happens in the app repo; update the
 matching types/queries here in the same change.
