@@ -200,3 +200,113 @@ h2.section { font-size: 14px; color: var(--muted); margin: 4px 0 10px; }
 .verdict .v-ok.on { background: #1d3a26; border-color: #5ad17a; color: #5ad17a; }
 .verdict .v-bad.on { background: #3a1d1d; border-color: var(--danger); color: var(--danger); }
 .verdict .v-idk.on { background: #332a16; border-color: var(--warn); color: var(--warn); }
+.verdict.compact { gap: 4px; }
+.verdict.compact .v { flex: 0 0 auto; padding: 4px 8px; font-size: 12px; }
+
+/* ---- Board status + keyboard hints ---- */
+.board-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.board-status b { color: var(--text); }
+.kbd-hints { font-size: 12px; }
+kbd {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 5px;
+  margin: 0 1px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+}
+
+/* Keyboard focus ring shared by price cards and receipt lines. */
+.card.focused,
+.rline.focused {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---- Receipt review cards (one photo + its parsed lines) ---- */
+.receipts { display: flex; flex-direction: column; gap: 16px; }
+.receipt-card {
+  display: flex;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+.receipt-img { flex: 0 0 auto; width: 200px; }
+.receipt-img img {
+  width: 100%;
+  height: auto;
+  max-height: 520px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  display: block;
+}
+.receipt-body { flex: 1 1 auto; min-width: 0; }
+.receipt-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.receipt-head .product { font-weight: 600; font-size: 15px; }
+.receipt-head .src { color: var(--muted); font-size: 12px; }
+.confirm-rest {
+  margin-left: auto;
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.confirm-rest:hover { border-color: #5ad17a; color: #5ad17a; }
+
+.receipt-lines { list-style: none; margin: 0; padding: 0; }
+.rline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-top: 1px solid var(--border);
+  border-radius: 6px;
+}
+.rline.decided { opacity: 0.45; }
+.rline-idx { flex: 0 0 auto; width: 18px; text-align: right; }
+.rline-main { flex: 1 1 auto; min-width: 0; }
+.rline-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.rline-vals { font-size: 12px; margin-top: 2px; }
+.field-chip.sm { font-size: 11px; padding: 0 6px; }
+.rline-tax {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.badge.warn.rline-edited, .badge.rline-conf { font-size: 10px; }

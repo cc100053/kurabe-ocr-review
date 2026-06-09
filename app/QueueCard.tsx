@@ -4,25 +4,39 @@ import {
   isPriceField,
   taxBasisFromEvidence,
   type QueueItem,
-} from "@/lib/queries";
-import type { Verdict } from "@/lib/notes";
+} from "@/lib/display";
+import type { Verdict } from "@/lib/verdict";
 import { VerdictButtons } from "./VerdictButtons";
 
-// One review card: a large scan image to eyeball, the product, the field, what
-// the AI read (and what was saved, if the user changed it), one short hint, and
-// the one-tap verdict. Nothing else — stats and pattern analysis live on /stats
-// and are read by AI, not here.
+// One price-tag review card: a large scan image to eyeball, the product, the
+// field, what the AI read (and what was saved, if the user changed it), one
+// short hint, and the one-tap verdict. Presentational — focus + verdict are
+// driven by the review board (mouse or keyboard); stats/pattern analysis live
+// on /stats and are read by AI, not here.
 export function QueueCard({
   item,
   verdict,
   aiResolved,
+  focused,
+  focusId,
+  onFocus,
+  onVerdict,
 }: {
   item: QueueItem;
   verdict: Verdict | null;
   aiResolved: string | null;
+  focused: boolean;
+  focusId?: number;
+  onFocus: () => void;
+  onVerdict: (verdict: Verdict | null) => void;
 }) {
+  const decided = verdict || aiResolved;
   return (
-    <article className={`card${verdict || aiResolved ? " decided" : ""}`}>
+    <article
+      className={`card${decided ? " decided" : ""}${focused ? " focused" : ""}`}
+      data-focus={focusId}
+      onMouseDown={onFocus}
+    >
       {item.image_url ? (
         <a
           className="card-img"
@@ -56,9 +70,8 @@ export function QueueCard({
           // The verdict judges the FINAL stored value (= saved_value), whether
           // it came from the AI or a user edit. Show the AI's original read as
           // muted context only when it differs.
-          const final = item.saved_value && item.saved_value !== ""
-            ? item.saved_value
-            : "∅";
+          const final =
+            item.saved_value && item.saved_value !== "" ? item.saved_value : "∅";
           const aiRead = item.ai_value || "∅";
           const differ = (item.saved_value ?? "") !== item.ai_value;
           // 含稅/不含稅 tag for price fields, derived from the tag evidence.
@@ -94,17 +107,15 @@ export function QueueCard({
         ) : null}
 
         {item.hint ? (
-          <div className="hint">⚐ 標籤：{item.hint.replace(/\s*\n\s*/g, " / ")}</div>
+          <div className="hint">
+            ⚐ 標籤：{item.hint.replace(/\s*\n\s*/g, " / ")}
+          </div>
         ) : null}
 
         {item.scan_id ? (
           <div className="verdict-block">
             <div className="ask">存咗嘅值啱唔啱？</div>
-            <VerdictButtons
-              scanId={item.scan_id}
-              field={item.field}
-              current={verdict}
-            />
+            <VerdictButtons current={verdict} onVerdict={onVerdict} />
           </div>
         ) : (
           <div className="hint muted">無 scan_id，無法記錄</div>
