@@ -1,46 +1,46 @@
-import { setVerdict } from "./actions";
-import type { Verdict } from "@/lib/notes";
+import type { Verdict } from "@/lib/verdict";
 
-// One-tap verdict: ✓ correct / ✗ wrong / 🤷 can't tell. Three submit buttons
-// in one server-action form (no client JS); the chosen button's value rides
-// along as `verdict`. The current verdict (if any) is highlighted.
+// One-tap verdict: ✓ correct / ✗ wrong / 🤷 can't tell. Presentational — the
+// click is handled by the parent review board (which also drives the same three
+// choices from the keyboard 1/2/3), so there is no <form>/reload here. The
+// current verdict (if any) is highlighted; `compact` shrinks it for receipt
+// lines. Tapping the active verdict again clears it (toggle off).
 export function VerdictButtons({
-  scanId,
-  field,
   current,
+  onVerdict,
+  compact = false,
 }: {
-  scanId: string;
-  field: string;
   current: Verdict | null;
+  onVerdict: (verdict: Verdict | null) => void;
+  compact?: boolean;
 }) {
+  const pick = (v: Verdict) => onVerdict(current === v ? null : v);
   return (
-    <form action={setVerdict} className="verdict">
-      <input type="hidden" name="scan_id" value={scanId} />
-      <input type="hidden" name="field" value={field} />
+    <div className={`verdict${compact ? " compact" : ""}`}>
       <button
-        type="submit"
-        name="verdict"
-        value="correct"
+        type="button"
+        onClick={() => pick("correct")}
         className={`v v-ok${current === "correct" ? " on" : ""}`}
+        title="啱 (1)"
       >
-        ✓ 啱
+        ✓{compact ? "" : " 啱"}
       </button>
       <button
-        type="submit"
-        name="verdict"
-        value="wrong"
+        type="button"
+        onClick={() => pick("wrong")}
         className={`v v-bad${current === "wrong" ? " on" : ""}`}
+        title="錯 (2)"
       >
-        ✗ 錯
+        ✗{compact ? "" : " 錯"}
       </button>
       <button
-        type="submit"
-        name="verdict"
-        value="cannot_tell"
+        type="button"
+        onClick={() => pick("cannot_tell")}
         className={`v v-idk${current === "cannot_tell" ? " on" : ""}`}
+        title="睇唔到 (3)"
       >
-        🤷 睇唔到
+        🤷{compact ? "" : " 睇唔到"}
       </button>
-    </form>
+    </div>
   );
 }

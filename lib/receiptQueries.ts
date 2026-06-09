@@ -1,5 +1,9 @@
 import { getSupabaseAdmin } from "./supabase";
 
+// Re-export the client-safe receipt label so server pages can keep importing it
+// from here; client components import it from "@/lib/display".
+export { receiptFieldLabel } from "./display";
+
 // Receipt-scan review reads two views (defined by a migration in the APP repo:
 // supabase/migrations/20260604120000_add_receipt_review_views.sql):
 //   - receipt_field_confusion_summary  : AI value vs final saved value per field
@@ -44,21 +48,6 @@ export type ReceiptFieldOverview = {
   corrected: number;
   correction_rate: number | null;
 };
-
-export function receiptFieldLabel(field: string | null): string {
-  switch (field) {
-    case "category":
-      return "分類";
-    case "name":
-      return "名稱";
-    case "price":
-      return "價格";
-    case "tax_basis":
-      return "稅別";
-    default:
-      return field ?? "—";
-  }
-}
 
 export async function getReceiptConfusion(): Promise<ReceiptConfusionRow[]> {
   const { data, error } = await getSupabaseAdmin()
@@ -130,4 +119,100 @@ export function changedFieldNames(
 ): string[] {
   if (!changed) return [];
   return FIELD_ORDER.filter((f) => changed[f]);
+}
+
+// ---------------------------------------------------------------------------
+// Image-backed receipt review: one card per receipt photo + its parsed lines.
+//
+// A receipt scan saves many lines that all share ONE uploaded photo, so the
+// human-review unit is the receipt: show the image once, list every saved line,
+// and let the reviewer eyeball each line against the picture. Reads the
+// `receipt_line_review` view (migration 20260608120000) which carries every
+// saved line plus the shared image_url / store_name / confidence.
+// ---------------------------------------------------------------------------
+
+export type ReceiptReviewLine = {
+  scanId: string; // full per-line id "<base>#<idx>"
+  lineIndex: number;
+  occurredAt: string;
+  productName: string | null;
+  confidence: string | null;
+  name: { ai: unknown; saved: unknown };
+  price: { ai: unknown; saved: unknown };
+  category: { ai: unknown; saved: unknown };
+  taxBasis: { ai: unknown; saved: unknown };
+  changed: string[]; // fields the user edited (context only)
+};
+
+export type ReceiptReviewGroup = {
+  baseScanId: string;
+  storeName: string | null;
+  imageUrl: string | null;
+  occurredAt: string; // newest line in the group
+  lines: ReceiptReviewLine[];
+};
+
+type LineReviewRow = {
+  occurred_at: string;
+  scan_id: string | null;
+  product_name: string | null;
+  store_name: string | null;
+  image_url: string | null;
+  confidence: string | null;
+  name: AiSaved;
+  price: AiSaved;
+  category: AiSaved;
+  tax_basis: AiSaved;
+  changed_fields: Record<string, boolean> | null;
+};
+
+// Group saved receipt lines into per-photo review cards, newest receipt first.
+export async function getReceiptReviewGroups(): Promise<ReceiptReviewGroup[]> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("receipt_line_review")
+    .select("*")
+    .order("occurred_at", { ascending: false })
+    .limit(600);
+  if (error) throw error;
+  const rows = (data ?? []) as LineReviewRow[];
+
+  const groups = new Map<string, ReceiptReviewGroup>();
+  for (const r of rows) {
+    if (!r.scan_id) continue;
+    const hash = r.scan_id.lastIndexOf("#");
+    const base = hash >= 0 ? r.scan_id.slice(0, hash) : r.scan_id;
+    const lineIndex = hash >= 0 ? Number(r.scan_id.slice(hash + 1)) || 0 : 0;
+    const line: ReceiptReviewLine = {
+      scanId: r.scan_id,
+      lineIndex,
+      occurredAt: r.occurred_at,
+      productName: r.product_name,
+      confidence: r.confidence,
+      name: { ai: r.name?.ai, saved: r.name?.saved },
+      price: { ai: r.price?.ai, saved: r.price?.saved },
+      category: { ai: r.category?.ai, saved: r.category?.saved },
+      taxBasis: { ai: r.tax_basis?.ai, saved: r.tax_basis?.saved },
+      changed: changedFieldNames(r.changed_fields),
+    };
+    const g = groups.get(base);
+    if (g) {
+      g.lines.push(line);
+      if (r.occurred_at > g.occurredAt) g.occurredAt = r.occurred_at;
+      if (!g.imageUrl && r.image_url) g.imageUrl = r.image_url;
+      if (!g.storeName && r.store_name) g.storeName = r.store_name;
+    } else {
+      groups.set(base, {
+        baseScanId: base,
+        storeName: r.store_name,
+        imageUrl: r.image_url,
+        occurredAt: r.occurred_at,
+        lines: [line],
+      });
+    }
+  }
+
+  const out = [...groups.values()];
+  for (const g of out) g.lines.sort((a, b) => a.lineIndex - b.lineIndex);
+  out.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+  return out;
 }

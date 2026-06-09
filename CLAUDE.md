@@ -28,15 +28,23 @@ npm run build                # must pass before pushing
 
 - All pages are `export const dynamic = "force-dynamic"` — the dashboard reads live data every request, never statically cached.
 - `lib/supabase.ts` — `getSupabaseAdmin()` builds a **service_role** client lazily and is marked `import "server-only"`. It must never be imported into a client component.
-- `lib/queries.ts` — reads the review views (see below).
-- `lib/notes.ts` + `app/actions.ts` — read/write `scan_review_notes`. The human verdict is one-tap: `setVerdict` (a server action from a plain `<form action={...}>`, no client JS) maps ✓correct→`wontfix`, ✗wrong→`triaged`, 🤷cannot_tell→`wontfix`+`root_cause=ocr`, and stamps `reviewed_by="human"` to distinguish eyeball verdicts from AI/skill notes. `verdictFromNote()` maps a note back to the verdict.
-- `app/QueueCard.tsx` + `app/VerdictButtons.tsx` — server components: the image-forward review card and its verdict buttons.
-- `lib/receiptQueries.ts` — reads the two receipt-scan review views (see below).
-- Pages: `app/page.tsx` (the review queue — the only human-facing surface), `app/stats/page.tsx` (compact big-picture: which field is worst + recurring errors; mostly for AI to read), and `app/receipt/page.tsx` (receipt-scan stats: receipts have no guard pass and no per-line photo, so there is nothing to eyeball case-by-case — this page is purely statistical, mirroring /stats).
+- **Client-safe vs server-only modules.** `app/page.tsx` is a server component but the review surface is interactive (keyboard + inline verdicts), so `app/ReviewBoard.tsx` and the cards are **client** components. A client component must not transitively import `lib/supabase`. So the pure types/helpers live in server-free modules — `lib/verdict.ts` (`Verdict`, `noteKey`, `verdictFromNote`, …) and `lib/display.ts` (`QueueItem`, `fieldLabel`, `riskReasons`, `receiptFieldLabel`, …) — and the data-fetching modules (`lib/notes.ts`, `lib/queries.ts`, `lib/receiptQueries.ts`) import + **re-export** them so server pages can keep importing from one place. Rule: client components import pure stuff from `@/lib/verdict` / `@/lib/display`; use `import type` for types from the server-only modules.
+- `lib/queries.ts` — reads the price-tag review views; re-exports `lib/display`.
+- `lib/notes.ts` + `app/actions.ts` — read/write `scan_review_notes`. Verdict actions are called straight from the client board (no `<form>`, no reload) and **don't revalidate** — the board reflects them optimistically and keeps cards in place for fast keyboard review; a real refetch happens on the next navigation (pages are force-dynamic). `setVerdict(scanId, field, verdict)` maps ✓correct→`wontfix`, ✗wrong→`triaged`, 🤷cannot_tell→`wontfix`+`root_cause=ocr`, stamps `reviewed_by="human"`. `clearVerdict` (undo) deletes only the human note; `confirmReceiptRest` bulk-marks a receipt's remaining lines correct. `clearQueue` is the one action that still revalidates.
+- `app/ReviewBoard.tsx` (client) — owns keyboard focus across every reviewable unit (price cards + receipt lines), the live verdict overlay, and the server-action calls. Keys: `1/2/3`=✓/✗/🤷 on the focused unit (then advance), `J/K` or `↓/↑` move, `U` undo.
+- `app/QueueCard.tsx` + `app/VerdictButtons.tsx` — presentational price-tag card + verdict buttons (driven by the board).
+- `app/ReceiptCard.tsx` — image-backed receipt card: one receipt photo + its parsed lines, per-line verdict + "其餘全部 ✓" (assume-good, flag-exceptions). A line's verdict id is its per-line `scan_id` with `field="line"`.
+- `lib/receiptQueries.ts` — reads the receipt-scan review views; `getReceiptReviewGroups()` groups `receipt_line_review` rows by base `scan_id` into per-photo cards.
+- Pages: `app/page.tsx` (the review queue — the human-facing surface; price-tag cards + receipt cards, with a 來源 全部/價牌/收據 toggle), `app/stats/page.tsx` (price-tag big-picture, mostly for AI), and `app/receipt/page.tsx` (receipt-scan **stats only**, for AI — per-photo human review now lives on `/`).
 
 ### Design intent
 
-The human's only irreducible job is **eyeballing a scan image and judging whether the AI's value is right**. So the queue (`/`) merges the two views that need eyes — `scan_field_suspicious_untouched` (flagged, never corrected → maybe silently wrong) and `scan_field_correction_samples` (user overrode AI) — into image-forward cards with one-tap verdicts, high-risk first, defaulting to the "待審 / unreviewed" filter. Everything statistical (correction rates, recurring patterns, guard reasons) is left for AI to read off the views directly; only a slim glance lives on `/stats`. Keep new UI minimal: show only what a human needs to adjudicate.
+The human's only irreducible job is **eyeballing a scan image and judging whether the AI's value is right**. So the queue (`/`) is image-forward with one-tap verdicts, high-risk first, defaulting to "待審", and is keyboard-driven for volume (1/2/3 verdict, J/K move, U undo) with inline verdicts (no page reload). It covers **both** streams:
+
+- **Price tag** — merges `scan_field_suspicious_untouched` (flagged, never corrected → maybe silently wrong) and `scan_field_correction_samples` (user overrode AI) into per-tag cards.
+- **Receipt** — one receipt uploads one shared photo, so the review unit is the receipt: `getReceiptReviewGroups()` shows that photo + every saved line, and the reviewer flags wrong lines against it ("其餘全部 ✓" confirms the rest). Image-backed because the photo (+ store name + per-line confidence) now rides along in the `receipt_record_saved` telemetry.
+
+Everything statistical (correction rates, recurring patterns, guard reasons) is left for AI to read off the views directly; only a slim glance lives on `/stats` (price tag) and `/receipt` (receipt). Keep new UI minimal: show only what a human needs to adjudicate.
 
 ### Data it reads (defined in the APP repo, not here)
 
@@ -51,6 +59,7 @@ this repo. This repo only consumes them:
 - `scan_review_notes` — triage status/root_cause/PR link/note per `scan_id+field`.
 - `receipt_field_confusion_summary` — receipt-scan AI→saved pairs per field (category/name/price/tax_basis), with `corrected_count`/`correction_rate`.
 - `receipt_field_correction_samples` — receipt lines the user edited; each field stored as a `{ai, saved}` json object plus a `changed_fields` flag map.
+- `receipt_line_review` — EVERY saved receipt line (not just edited), each field as `{ai, saved}` + `changed_fields`, plus the shared `image_url` / `store_name` / `confidence`. Backs the per-photo human review cards on `/`. (`image_url`/`store_name`/`confidence` are null for events from app versions before they were added to the `receipt_record_saved` payload.)
 
 If you change a view's columns, that migration happens in the app repo; update the
 matching types/queries here in the same change.

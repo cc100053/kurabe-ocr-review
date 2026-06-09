@@ -51,8 +51,9 @@ export default async function ReceiptStats() {
     <main>
       <h1>收據掃描</h1>
       <p className="subtitle">
-        收據冇守衛、亦冇逐行相,所以唔使逐張肉眼審。呢度純統計:邊個欄位
-        AI 讀收據最易錯,同埋實際俾用戶改過嘅例子。
+        呢度係收據嘅統計:邊個欄位 AI 讀收據最易錯,同埋實際俾用戶改過嘅例子(交俾
+        AI 讀去改 receipt prompt)。逐張收據對住相、逐行肉眼審而家喺
+        <a href="/?source=receipt">「審查佇列 → 收據」</a>。
       </p>
 
       {!hasData ? (
