@@ -20,6 +20,7 @@ export default function RootLayout({
           <Link href="/">審查佇列</Link>
           <Link href="/stats">統計</Link>
           <Link href="/receipt">收據</Link>
+          <Link href="/support">客服</Link>
         </nav>
         <div className="container">{children}</div>
       </body>
