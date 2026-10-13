@@ -38,3 +38,14 @@ gated by **Vercel Authentication** (Settings → Deployment Protection): only
 members of the Vercel team who are logged in can reach any deployment. There is
 no app-level auth, so keep Deployment Protection enabled. On localhost the app
 is unprotected — only run `npm run dev` on a trusted machine.
+
+## Product identity review
+
+`/products` is protected by `CONSOLE_PASSWORD` and server-action authentication.
+It shows product-pair photos, attributes and weekly Codex photo proposals; only
+human reviewers can correct identity fields from each record's own original
+photo, merge an evidenced pair or undo a decision. Names, prices and comparison
+weights are retained; corrections invalidate stale assessments and append an audit.
+Supabase schema/contracts live in the main app repository's
+`docs/product_identity_review.md` and its product-identity migrations.
+Run `npm run build` before publishing.

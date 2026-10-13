@@ -6,8 +6,8 @@ import { NextResponse, type NextRequest } from "next/server";
 export function middleware(req: NextRequest) {
   const password = process.env.CONSOLE_PASSWORD;
   if (!password) {
-    return req.nextUrl.pathname.startsWith("/support")
-      ? new NextResponse("Set CONSOLE_PASSWORD to enable /support", { status: 503 })
+    return (req.nextUrl.pathname.startsWith("/support") || req.nextUrl.pathname.startsWith("/products"))
+      ? new NextResponse("Set CONSOLE_PASSWORD to enable reviewer actions", { status: 503 })
       : NextResponse.next();
   }
   const header = req.headers.get("authorization") ?? "";
