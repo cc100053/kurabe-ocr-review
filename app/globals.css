@@ -338,3 +338,9 @@ kbd {
 .queue-photo { flex: 0 0 132px; width: 132px; }
 .queue-photo .photo-stage > img { height: 132px; border-radius: 8px; }
 .receipt-img .photo-stage > img { height: auto; max-height: 520px; object-fit: contain; }
+
+/* ✗ receipt line: which fields are wrong. */
+.blame { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.blame button { cursor: pointer; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; font-size: 11px; }
+.blame button.on { border-color: var(--danger); color: var(--danger); background: #3a1d1d; }
+.batch-done { margin: 20px 0; padding: 14px; text-align: center; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }

@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "./supabase";
+import { getSupabaseAdmin, selectAll } from "./supabase";
 import { HIGH_RISK, type QueueItem, type QueueSource } from "./display";
 
 // Re-export the client-safe display helpers/types so existing imports
@@ -76,10 +76,11 @@ function fmtValue(v: unknown): string {
 
 // The single feed behind the review queue. High-risk first, then newest.
 // Merges suspicious (flagged but untouched) + corrected (user overrode AI).
-export async function getReviewQueue(): Promise<QueueItem[]> {
+// `since` is the queue baseline: only cases after it are fetched (all of them).
+export async function getReviewQueue(since: string): Promise<QueueItem[]> {
   const [suspicious, corrected] = await Promise.all([
-    getSuspicious(),
-    getCorrectionSamples(),
+    getSuspicious(since),
+    getCorrectionSamples(since),
   ]);
 
   const items: QueueItem[] = [];
@@ -146,25 +147,29 @@ export async function getConfusion(): Promise<ConfusionRow[]> {
 }
 
 export async function getCorrectionSamples(
-  field?: string,
+  since: string,
 ): Promise<CorrectionSample[]> {
-  let q = getSupabaseAdmin()
-    .from("scan_field_correction_samples")
-    .select("*")
-    .order("occurred_at", { ascending: false })
-    .limit(200);
-  if (field) q = q.eq("field_name", field);
-  const { data, error } = await q;
-  if (error) throw error;
-  return (data ?? []) as CorrectionSample[];
+  return selectAll<CorrectionSample>((from, to) =>
+    getSupabaseAdmin()
+      .from("scan_field_correction_samples")
+      .select("*")
+      .gt("occurred_at", since)
+      .order("occurred_at", { ascending: false })
+      .order("scan_id")
+      .order("field_name")
+      .range(from, to),
+  );
 }
 
-export async function getSuspicious(): Promise<SuspiciousRow[]> {
-  const { data, error } = await getSupabaseAdmin()
-    .from("scan_field_suspicious_untouched")
-    .select("*")
-    .order("occurred_at", { ascending: false })
-    .limit(300);
-  if (error) throw error;
-  return (data ?? []) as SuspiciousRow[];
+export async function getSuspicious(since: string): Promise<SuspiciousRow[]> {
+  return selectAll<SuspiciousRow>((from, to) =>
+    getSupabaseAdmin()
+      .from("scan_field_suspicious_untouched")
+      .select("*")
+      .gt("occurred_at", since)
+      .order("occurred_at", { ascending: false })
+      .order("scan_id")
+      .order("field_name")
+      .range(from, to),
+  );
 }

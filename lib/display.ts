@@ -77,6 +77,7 @@ export const RISK_LABELS: Record<string, string> = {
   food_tax_risk: "食品稅率風險：核對分類同稅率啱唔啱",
   non_food_household_cue: "似日用品：核對分類啱唔啱",
   discount_without_discount_cue: "冇折扣線索但標咗折扣：核對係咪真係特價",
+  discount_value_not_in_evidence: "折扣數字喺標籤文字搵唔到：核對折扣值啱唔啱",
   weight_without_weight_keyword: "重量冇單位字眼：確認個重量讀啱",
   weight_too_large_for_context: "重量大得異常：核對單位（g / kg）",
   weight_from_unit_price_context: "重量可能來自單價（100g當り）：核對唔係包裝淨重",

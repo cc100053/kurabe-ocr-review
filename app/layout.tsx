@@ -13,13 +13,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="zh-Hant-HK">
       <body>
         <nav>
           <span className="brand">🔍 Kurabe OCR 審查</span>
           <Link href="/">審查佇列</Link>
-          <Link href="/stats">統計</Link>
-          <Link href="/receipt">收據</Link>
           <Link href="/products">同款商品</Link>
           <Link href="/support">客服</Link>
         </nav>

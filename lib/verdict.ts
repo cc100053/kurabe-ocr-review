@@ -11,6 +11,7 @@ export type ReviewNote = {
   field: string;
   status: ReviewStatus;
   root_cause: RootCause | null;
+  action_taken: string | null;
   linked_pr_url: string | null;
   note: string | null;
   reviewed_by: string | null;
@@ -58,3 +59,15 @@ export const QUEUE_CONFIG = {
   scanId: "__config__",
   field: "queue_cleared_at",
 } as const;
+
+// Receipt fields a reviewer can blame when a line is ✗. Stored on the line note
+// as action_taken="wrong:<f>,<f>" so the AI loop knows what to look at.
+export const RECEIPT_FIELDS = ["category", "name", "price", "tax_basis"] as const;
+export type ReceiptField = (typeof RECEIPT_FIELDS)[number];
+
+export function wrongFieldsFromNote(note?: ReviewNote): ReceiptField[] {
+  const raw = note?.action_taken;
+  if (!raw?.startsWith("wrong:")) return [];
+  const picked = raw.slice("wrong:".length).split(",");
+  return RECEIPT_FIELDS.filter((f) => picked.includes(f));
+}

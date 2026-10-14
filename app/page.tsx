@@ -7,8 +7,11 @@ import {
   isResolved,
   resolutionLabel,
   getQueueClearedAt,
+  wrongFieldsFromNote,
+  type ReceiptField,
   type Verdict,
 } from "@/lib/notes";
+import { takeBatch } from "@/lib/batch";
 import { clearQueue } from "./actions";
 import { ReviewBoard } from "./ReviewBoard";
 
@@ -46,22 +49,18 @@ export default async function ReviewQueue({
     source = "all",
   } = await searchParams;
 
-  const [queue, receiptGroups, notes, clearedAt] = await Promise.all([
-    getReviewQueue(),
-    getReceiptReviewGroups(),
+  // "Clear queue" baseline: only cases that occurred after it are fetched.
+  const clearedAt = await getQueueClearedAt();
+  const since = clearedAt ?? "1970-01-01T00:00:00Z";
+  const [queue, receiptGroups, notes] = await Promise.all([
+    getReviewQueue(since),
+    getReceiptReviewGroups(since),
     getNotesMap(),
-    getQueueClearedAt(),
   ]);
-
-  // "Clear queue" baseline: only show cases that occurred after it.
-  const clearedMs = clearedAt ? new Date(clearedAt).getTime() : 0;
-  const fresh = (iso: string) => new Date(iso).getTime() > clearedMs;
 
   // ---- Price-tag cards ----
   const showPrice = source === "all" || source === "price";
-  const decorated = queue
-    .filter((item) => fresh(item.occurred_at))
-    .map((item) => {
+  const decorated = queue.map((item) => {
       const note = item.scan_id
         ? notes.get(noteKey(item.scan_id, item.field))
         : undefined;
@@ -75,7 +74,7 @@ export default async function ReviewQueue({
       };
     });
 
-  const priceRows = showPrice
+  const allPriceRows = showPrice
     ? decorated.filter(({ item, resolved }) => {
         if (!fieldMatches(item.field, field)) return false;
         if (view === "todo") return !resolved;
@@ -90,10 +89,8 @@ export default async function ReviewQueue({
   const lineResolved = (scanId: string) =>
     isResolved(notes.get(noteKey(scanId, "line")));
 
-  const receiptRows = showReceipt
-    ? receiptGroups
-        .filter((g) => fresh(g.occurredAt))
-        .filter((g) => {
+  const allReceiptRows = showReceipt
+    ? receiptGroups.filter((g) => {
           const unresolved = g.lines.filter((l) => !lineResolved(l.scanId));
           if (view === "todo") return unresolved.length > 0;
           if (view === "done") return unresolved.length === 0;
@@ -102,8 +99,33 @@ export default async function ReviewQueue({
         })
     : [];
 
+  // 待審 is served one sitting at a time; receipts holding category-memory
+  // candidates go first so shared memory isn't starved by the backlog.
+  const pending = view === "todo" || view === "high";
+  if (pending) {
+    const hasMemory = (g: (typeof allReceiptRows)[number]) =>
+      g.lines.some((l) => l.categoryCorrected) ? 0 : 1;
+    allReceiptRows.sort(
+      (a, b) =>
+        hasMemory(a) - hasMemory(b) || b.occurredAt.localeCompare(a.occurredAt),
+    );
+  }
+  const unresolvedLines = (g: (typeof allReceiptRows)[number]) =>
+    g.lines.filter((l) => !lineResolved(l.scanId)).length;
+  const batch = pending
+    ? takeBatch(allPriceRows, allReceiptRows, unresolvedLines)
+    : { price: allPriceRows, receipts: allReceiptRows };
+  const priceRows = batch.price;
+  const receiptRows = batch.receipts;
+  const units = (rows: typeof allPriceRows, groups: typeof allReceiptRows) =>
+    rows.length + groups.reduce((n, g) => n + unresolvedLines(g), 0);
+  const backlog = pending
+    ? units(allPriceRows, allReceiptRows) - units(priceRows, receiptRows)
+    : 0;
+
   // Seed the board's verdict overlay from existing human notes (both streams).
   const initialVerdicts: Record<string, Verdict> = {};
+  const initialWrongFields: Record<string, ReceiptField[]> = {};
   const aiResolved: Record<string, string> = {};
   for (const { item, verdict, aiResolved: ai } of priceRows) {
     if (!item.scan_id) continue;
@@ -113,8 +135,12 @@ export default async function ReviewQueue({
   }
   for (const g of receiptRows) {
     for (const l of g.lines) {
-      const v = verdictFromNote(notes.get(noteKey(l.scanId, "line")));
-      if (v) initialVerdicts[noteKey(l.scanId, "line")] = v;
+      const key = noteKey(l.scanId, "line");
+      const note = notes.get(key);
+      const v = verdictFromNote(note);
+      if (v) initialVerdicts[key] = v;
+      const blamed = wrongFieldsFromNote(note);
+      if (blamed.length) initialWrongFields[key] = blamed;
     }
   }
 
@@ -136,8 +162,8 @@ export default async function ReviewQueue({
         </form>
       </div>
       <p className="subtitle">
-        睇住相,判斷 AI 讀嘅值啱定錯。價牌逐張、收據逐行對住相審;統計同 pattern
-        分析交俾 AI 讀(見「統計」/「收據」)。
+        睇住相,判斷存咗嘅值啱定錯。每批最多 20 個;收據只列改過、記憶預填或
+        AI 冇信心嘅行,其餘默認啱。統計同 pattern 交俾 AI 直接讀 view。
         {clearedLabel
           ? `（已清空至 ${clearedLabel} UTC,只顯示之後嘅新 case）`
           : null}
@@ -190,7 +216,10 @@ export default async function ReviewQueue({
           items={priceRows.map((r) => r.item)}
           receipts={receiptRows}
           initialVerdicts={initialVerdicts}
+          initialWrongFields={initialWrongFields}
           aiResolved={aiResolved}
+          backlog={backlog}
+          nextHref={`/?view=${view}&field=${field}&source=${source}`}
         />
       )}
     </main>

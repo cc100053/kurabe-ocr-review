@@ -4,7 +4,12 @@ import type {
   ReceiptReviewGroup,
   ReceiptReviewLine,
 } from "@/lib/receiptQueries";
-import { noteKey, type Verdict } from "@/lib/verdict";
+import {
+  noteKey,
+  RECEIPT_FIELDS,
+  type ReceiptField,
+  type Verdict,
+} from "@/lib/verdict";
 import { VerdictButtons } from "./VerdictButtons";
 
 function fmt(v: unknown): string {
@@ -31,10 +36,13 @@ function Cell({ pair }: { pair: { ai: unknown; saved: unknown } }) {
   );
 }
 
-// One receipt = one photo + every saved line. The reviewer eyeballs the image
-// once and judges each line; "其餘全部 ✓" confirms all still-unjudged lines at
-// once (assume-good, flag-exceptions). A line's verdict id is its per-line
-// scan_id with field "line".
+// One receipt = one photo + the saved lines that need a human eye (edited,
+// memory-prefilled or low-confidence; the rest are assumed correct). The
+// reviewer eyeballs the image once and judges each line; "其餘全部 ✓" confirms
+// the still-unjudged lines at once (assume-good, flag-exceptions) — except
+// category corrections, which become shared category memory only through their
+// own per-line ✓. A ✗ line asks which fields are wrong. A line's verdict id is
+// its per-line scan_id with field "line".
 export function ReceiptCard({
   group,
   verdicts,
@@ -42,6 +50,8 @@ export function ReceiptCard({
   lineFocus,
   onFocusLine,
   onVerdictLine,
+  wrongFields,
+  onBlame,
   onConfirmRest,
 }: {
   group: ReceiptReviewGroup;
@@ -50,6 +60,8 @@ export function ReceiptCard({
   lineFocus: Map<string, number>;
   onFocusLine: (scanId: string) => void;
   onVerdictLine: (scanId: string, verdict: Verdict | null) => void;
+  wrongFields: Map<string, ReceiptField[]>;
+  onBlame: (scanId: string, fields: ReceiptField[]) => void;
   onConfirmRest: (scanIds: string[]) => void;
 }) {
   const verdictOf = (line: ReceiptReviewLine): Verdict | null =>
@@ -57,6 +69,8 @@ export function ReceiptCard({
 
   const unjudged = group.lines.filter((l) => verdictOf(l) === null);
   const doneCount = group.lines.length - unjudged.length;
+  // Memory sources need their own look; bulk ✓ only covers the rest.
+  const bulk = unjudged.filter((l) => !l.categoryCorrected);
 
   return (
     <article className="receipt-card">
@@ -73,19 +87,20 @@ export function ReceiptCard({
           <span className="product">{group.storeName ?? "（無店名）"}</span>
           <span className="src">
             {doneCount}/{group.lines.length} 已審
+            {group.skipped > 0 ? ` · 另 ${group.skipped} 行 AI 照存，默認啱` : ""}
           </span>
-          {unjudged.length > 0 ? (
+          {bulk.length > 0 ? (
             <button
               type="button"
               className="confirm-rest"
-              onClick={() => onConfirmRest(unjudged.map((l) => l.scanId))}
-              title="其餘未審嘅行全部標 ✓"
+              onClick={() => onConfirmRest(bulk.map((l) => l.scanId))}
+              title="其餘未審嘅行全部標 ✓（分類修正要逐行確認）"
             >
               其餘全部 ✓
             </button>
-          ) : (
+          ) : unjudged.length === 0 ? (
             <span className="badge ok">全部已審</span>
-          )}
+          ) : null}
         </div>
 
         <ul className="receipt-lines">
@@ -110,7 +125,20 @@ export function ReceiptCard({
                     {line.productName ?? fmt(line.name.saved)}
                     {line.changed.length > 0 ? (
                       <span className="badge warn rline-edited">
-                        改咗{line.changed.map(receiptFieldLabel).join("・")}
+                        改咗{line.changed.map((f) => receiptFieldLabel(f)).join("・")}
+                      </span>
+                    ) : null}
+                    {line.categoryCorrected ? (
+                      <span
+                        className="badge warn rline-edited"
+                        title="✓ 會將呢個分類加入共用分類記憶"
+                      >
+                        分類修正 → ✓ 即入記憶
+                      </span>
+                    ) : null}
+                    {line.memoryApplied ? (
+                      <span className="badge rline-conf" title="分類由共用記憶預填">
+                        記憶預填
                       </span>
                     ) : null}
                     {lowConf ? (
@@ -126,6 +154,31 @@ export function ReceiptCard({
                     {"　"}
                     <span className="rline-tax">{taxTag(line.taxBasis.saved)}</span>
                   </div>
+                  {v === "wrong" ? (
+                    <div className="blame">
+                      錯邊樣：
+                      {RECEIPT_FIELDS.map((f) => {
+                        const picked = wrongFields.get(noteKey(line.scanId, "line")) ?? [];
+                        const on = picked.includes(f);
+                        return (
+                          <button
+                            key={f}
+                            type="button"
+                            aria-pressed={on}
+                            className={on ? "on" : ""}
+                            onClick={() =>
+                              onBlame(
+                                line.scanId,
+                                on ? picked.filter((x) => x !== f) : [...picked, f],
+                              )
+                            }
+                          >
+                            {receiptFieldLabel(f)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
                 <VerdictButtons
                   current={v}

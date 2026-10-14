@@ -1,17 +1,15 @@
-import { getSupabaseAdmin } from "./supabase";
+import { getSupabaseAdmin, selectAll } from "./supabase";
+import { needsHumanEye } from "./batch";
 
 // Re-export the client-safe receipt label so server pages can keep importing it
 // from here; client components import it from "@/lib/display".
 export { receiptFieldLabel } from "./display";
 
-// Receipt-scan review reads two views (defined by a migration in the APP repo:
-// supabase/migrations/20260604120000_add_receipt_review_views.sql):
-//   - receipt_field_confusion_summary  : AI value vs final saved value per field
-//   - receipt_field_correction_samples : lines the user actually edited
-// Receipts have NO guard pass and NO per-line image (one photo → many lines),
-// so there is no image-forward "eyeball the photo" queue like the price-tag flow.
-// This surface is purely statistical, like /stats: which field the AI gets wrong
-// most, and concrete corrected examples to read off.
+// Receipt-scan views (defined by migrations in the APP repo):
+//   - receipt_field_confusion_summary / receipt_field_correction_samples:
+//     statistics for AI (the /receipt page, hidden from the nav).
+//   - receipt_line_review: every saved line + the shared receipt photo, backing
+//     the per-photo human review cards on `/` (see getReceiptReviewGroups).
 
 const FIELD_ORDER = ["category", "name", "price", "tax_basis"];
 
@@ -142,6 +140,9 @@ export type ReceiptReviewLine = {
   category: { ai: unknown; saved: unknown };
   taxBasis: { ai: unknown; saved: unknown };
   changed: string[]; // fields the user edited (context only)
+  eventId: number | null; // telemetry event id: the category-memory approval key
+  categoryCorrected: boolean; // a category correction = shared-memory source candidate
+  memoryApplied: boolean; // category was prefilled from shared memory
 };
 
 export type ReceiptReviewGroup = {
@@ -149,7 +150,8 @@ export type ReceiptReviewGroup = {
   storeName: string | null;
   imageUrl: string | null;
   occurredAt: string; // newest line in the group
-  lines: ReceiptReviewLine[];
+  lines: ReceiptReviewLine[]; // only lines that need a human eye
+  skipped: number; // untouched high-confidence lines, assumed correct
 };
 
 type LineReviewRow = {
@@ -164,17 +166,27 @@ type LineReviewRow = {
   category: AiSaved;
   tax_basis: AiSaved;
   changed_fields: Record<string, boolean> | null;
+  // Appended by app migration 20261014180000; undefined on the older view.
+  event_id?: number;
+  category_corrected?: boolean;
+  category_memory_applied?: boolean;
 };
 
-// Group saved receipt lines into per-photo review cards, newest receipt first.
-export async function getReceiptReviewGroups(): Promise<ReceiptReviewGroup[]> {
-  const { data, error } = await getSupabaseAdmin()
-    .from("receipt_line_review")
-    .select("*")
-    .order("occurred_at", { ascending: false })
-    .limit(600);
-  if (error) throw error;
-  const rows = (data ?? []) as LineReviewRow[];
+// Group saved receipt lines (after the queue baseline `since`) into per-photo
+// review cards, newest receipt first. Only lines that need a human eye are kept;
+// receipts with none are dropped.
+export async function getReceiptReviewGroups(
+  since: string,
+): Promise<ReceiptReviewGroup[]> {
+  const rows = await selectAll<LineReviewRow>((from, to) =>
+    getSupabaseAdmin()
+      .from("receipt_line_review")
+      .select("*")
+      .gt("occurred_at", since)
+      .order("occurred_at", { ascending: false })
+      .order("scan_id")
+      .range(from, to),
+  );
 
   const groups = new Map<string, ReceiptReviewGroup>();
   for (const r of rows) {
@@ -182,6 +194,11 @@ export async function getReceiptReviewGroups(): Promise<ReceiptReviewGroup[]> {
     const hash = r.scan_id.lastIndexOf("#");
     const base = hash >= 0 ? r.scan_id.slice(0, hash) : r.scan_id;
     const lineIndex = hash >= 0 ? Number(r.scan_id.slice(hash + 1)) || 0 : 0;
+    // changed_fields.category is also true for an accepted memory prefill; the
+    // newer view's category_corrected is the real "user changed it" signal.
+    const changed = changedFieldNames(r.changed_fields).filter(
+      (f) => f !== "category" || r.category_corrected !== false,
+    );
     const line: ReceiptReviewLine = {
       scanId: r.scan_id,
       lineIndex,
@@ -192,11 +209,16 @@ export async function getReceiptReviewGroups(): Promise<ReceiptReviewGroup[]> {
       price: { ai: r.price?.ai, saved: r.price?.saved },
       category: { ai: r.category?.ai, saved: r.category?.saved },
       taxBasis: { ai: r.tax_basis?.ai, saved: r.tax_basis?.saved },
-      changed: changedFieldNames(r.changed_fields),
+      changed,
+      eventId: r.event_id ?? null,
+      categoryCorrected: r.category_corrected ?? changed.includes("category"),
+      memoryApplied: r.category_memory_applied ?? false,
     };
+    const keep = needsHumanEye(line);
     const g = groups.get(base);
     if (g) {
-      g.lines.push(line);
+      if (keep) g.lines.push(line);
+      else g.skipped++;
       if (r.occurred_at > g.occurredAt) g.occurredAt = r.occurred_at;
       if (!g.imageUrl && r.image_url) g.imageUrl = r.image_url;
       if (!g.storeName && r.store_name) g.storeName = r.store_name;
@@ -206,12 +228,13 @@ export async function getReceiptReviewGroups(): Promise<ReceiptReviewGroup[]> {
         storeName: r.store_name,
         imageUrl: r.image_url,
         occurredAt: r.occurred_at,
-        lines: [line],
+        lines: keep ? [line] : [],
+        skipped: keep ? 0 : 1,
       });
     }
   }
 
-  const out = [...groups.values()];
+  const out = [...groups.values()].filter((g) => g.lines.length > 0);
   for (const g of out) g.lines.sort((a, b) => a.lineIndex - b.lineIndex);
   out.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
   return out;

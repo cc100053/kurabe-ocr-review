@@ -22,6 +22,7 @@ cp .env.example .env.local   # fill SUPABASE_SERVICE_ROLE_KEY
 npm install
 npm run dev                  # http://localhost:3000 (no auth on localhost)
 npm run build                # must pass before pushing
+node --test test/*.test.ts   # pure-helper tests (Node ≥ 22.18 strips TS types)
 ```
 
 ## Architecture
@@ -30,16 +31,19 @@ npm run build                # must pass before pushing
 - `lib/supabase.ts` — `getSupabaseAdmin()` builds a **service_role** client lazily and is marked `import "server-only"`. It must never be imported into a client component.
 - **Client-safe vs server-only modules.** `app/page.tsx` is a server component but the review surface is interactive (keyboard + inline verdicts), so `app/ReviewBoard.tsx` and the cards are **client** components. A client component must not transitively import `lib/supabase`. So the pure types/helpers live in server-free modules — `lib/verdict.ts` (`Verdict`, `noteKey`, `verdictFromNote`, …) and `lib/display.ts` (`QueueItem`, `fieldLabel`, `riskReasons`, `receiptFieldLabel`, …) — and the data-fetching modules (`lib/notes.ts`, `lib/queries.ts`, `lib/receiptQueries.ts`) import + **re-export** them so server pages can keep importing from one place. Rule: client components import pure stuff from `@/lib/verdict` / `@/lib/display`; use `import type` for types from the server-only modules.
 - `lib/queries.ts` — reads the price-tag review views; re-exports `lib/display`.
-- `lib/notes.ts` + `app/actions.ts` — read/write `scan_review_notes`. Verdict actions are called straight from the client board (no `<form>`, no reload) and **don't revalidate** — the board reflects them optimistically and keeps cards in place for fast keyboard review; a real refetch happens on the next navigation (pages are force-dynamic). `setVerdict(scanId, field, verdict)` maps ✓correct→`wontfix`, ✗wrong→`triaged`, 🤷cannot_tell→`wontfix`+`root_cause=ocr`, stamps `reviewed_by="human"`. `clearVerdict` (undo) deletes only the human note; `confirmReceiptRest` bulk-marks a receipt's remaining lines correct. `clearQueue` is the one action that still revalidates.
+- `lib/supabase.ts` also exports `selectAll()`: PostgREST caps responses at 1000 rows, so any unbounded read (notes, the queue feeds) pages through it.
+- `lib/notes.ts` + `app/actions.ts` — read/write `scan_review_notes`. Verdict actions are called straight from the client board (no `<form>`, no reload) and **don't revalidate** — the board reflects them optimistically and keeps cards in place for fast keyboard review; a real refetch happens on the next navigation (pages are force-dynamic). `setVerdict(scanId, field, verdict)` maps ✓correct→`wontfix`, ✗wrong→`triaged`, 🤷cannot_tell→`wontfix`+`root_cause=ocr`, stamps `reviewed_by="human"`. `clearVerdict` (undo) deletes only the human note; `confirmReceiptRest` bulk-marks a receipt's remaining lines correct (never category-memory candidates). `setLineWrongFields` stores which fields a ✗ receipt line got wrong as `action_taken="wrong:category,price"`. `clearQueue` is the one action that still revalidates.
+- **Receipt category memory** (app doc `docs/receipt_category_memory.md`): a receipt line whose category the user corrected (`category_corrected`) is a shared-memory source candidate. ✓ on that line calls the service-role RPC `approve_receipt_category_memory(event_id)` (event-bound approval, `field='category_memory'`, `scan_id='event:<id>'`); ✗ blaming 分類 writes a `wontfix` exclusion on the line `scan_id`; undo / 🤷 removes both. Only rows with `reviewed_by='human'` are ever deleted. Without the `event_id` column (pre-20261014180000 view) this is inert.
 - `app/ReviewBoard.tsx` (client) — owns keyboard focus across every reviewable unit (price cards + receipt lines), the live verdict overlay, and the server-action calls. Keys: `1/2/3`=✓/✗/🤷 on the focused unit (then advance), `J/K` or `↓/↑` move, `U` undo.
 - `app/QueueCard.tsx` + `app/VerdictButtons.tsx` — presentational price-tag card + verdict buttons (driven by the board).
 - `app/ReceiptCard.tsx` — image-backed receipt card: one receipt photo + its parsed lines, per-line verdict + "其餘全部 ✓" (assume-good, flag-exceptions). A line's verdict id is its per-line `scan_id` with `field="line"`.
-- `lib/receiptQueries.ts` — reads the receipt-scan review views; `getReceiptReviewGroups()` groups `receipt_line_review` rows by base `scan_id` into per-photo cards.
-- Pages: `app/page.tsx` (the review queue — the human-facing surface; price-tag cards + receipt cards, with a 來源 全部/價牌/收據 toggle), `app/stats/page.tsx` (price-tag big-picture, mostly for AI), and `app/receipt/page.tsx` (receipt-scan **stats only**, for AI — per-photo human review now lives on `/`).
+- `lib/receiptQueries.ts` — reads the receipt-scan review views; `getReceiptReviewGroups(since)` groups `receipt_line_review` rows by base `scan_id` into per-photo cards, keeping only lines that need a human eye (`lib/batch.ts` `needsHumanEye`: edited, memory-prefilled, category-corrected or low/medium confidence; the rest count as `skipped`).
+- `lib/batch.ts` — `takeBatch()` serves 待審 one sitting (20 units) at a time: receipts up to half, price cards the rest, memory-candidate receipts first.
+- Pages: `app/page.tsx` (the review queue — the human-facing surface; price-tag cards + receipt cards, with a 來源 全部/價牌/收據 toggle), `app/products/page.tsx` (same-product photo-pair review, see app doc `docs/product_identity_review.md`), `app/support/page.tsx` (in-app support replies). `app/stats/page.tsx` and `app/receipt/page.tsx` are statistics for AI and are **not in the nav**; AI should read the views directly.
 
 ### Design intent
 
-The human's only irreducible job is **eyeballing a scan image and judging whether the AI's value is right**. So the queue (`/`) is image-forward with one-tap verdicts, high-risk first, defaulting to "待審", and is keyboard-driven for volume (1/2/3 verdict, J/K move, U undo) with inline verdicts (no page reload). It covers **both** streams:
+The human's only irreducible job is **eyeballing a scan image and judging whether the AI's value is right**. So the queue (`/`) is image-forward with one-tap verdicts, high-risk first, defaulting to "待審", and is keyboard-driven for volume (1/2/3 verdict, J/K move, U undo) with inline verdicts (no page reload). 待審 is served in batches of 20 ("下一批 →" when done) and receipts show only uncertain lines, so a sitting takes minutes, not an afternoon. It covers **both** streams:
 
 - **Price tag** — merges `scan_field_suspicious_untouched` (flagged, never corrected → maybe silently wrong) and `scan_field_correction_samples` (user overrode AI) into per-tag cards.
 - **Receipt** — one receipt uploads one shared photo, so the review unit is the receipt: `getReceiptReviewGroups()` shows that photo + every saved line, and the reviewer flags wrong lines against it ("其餘全部 ✓" confirms the rest). Image-backed because the photo (+ store name + per-line confidence) now rides along in the `receipt_record_saved` telemetry.
@@ -59,7 +63,8 @@ this repo. This repo only consumes them:
 - `scan_review_notes` — triage status/root_cause/PR link/note per `scan_id+field`.
 - `receipt_field_confusion_summary` — receipt-scan AI→saved pairs per field (category/name/price/tax_basis), with `corrected_count`/`correction_rate`.
 - `receipt_field_correction_samples` — receipt lines the user edited; each field stored as a `{ai, saved}` json object plus a `changed_fields` flag map.
-- `receipt_line_review` — EVERY saved receipt line (not just edited), each field as `{ai, saved}` + `changed_fields`, plus the shared `image_url` / `store_name` / `confidence`. Backs the per-photo human review cards on `/`. (`image_url`/`store_name`/`confidence` are null for events from app versions before they were added to the `receipt_record_saved` payload.)
+- `receipt_line_review` — EVERY saved receipt line (not just edited), each field as `{ai, saved}` + `changed_fields`, plus the shared `image_url` / `store_name` / `confidence`, and (app migration `20261014180000`) `event_id`, `category_corrected`, `category_memory_applied`. Backs the per-photo human review cards on `/`. (`image_url`/`store_name`/`confidence` are null for events from app versions before they were added to the `receipt_record_saved` payload.) Note `changed_fields.category` is also true for an accepted memory prefill; `category_corrected` is the real user-change signal.
+- `approve_receipt_category_memory(p_event_id, p_note)` — service-role-only RPC (same migration) that writes the event-bound category-memory approval.
 
 If you change a view's columns, that migration happens in the app repo; update the
 matching types/queries here in the same change.
@@ -77,6 +82,7 @@ repo — verify the project ID before running any DB migration there.
 |---|---|
 | `SUPABASE_URL` | `https://lgwdwfotnwfparvxqqnq.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | **secret**, full DB access, server-only — never `NEXT_PUBLIC_` |
+| `CONSOLE_PASSWORD` | **secret**, Basic-auth password for the whole console (required for `/support`, `/products`) |
 
 Set in the Vercel project (Production + Preview). Locally use `.env.local` (gitignored).
 
@@ -93,7 +99,10 @@ Git-connected: **push to `master` → Vercel auto-deploys production**; PRs get 
 ## Security
 
 `service_role` bypasses RLS (the `scan_telemetry_events` table is `select_own`),
-so this dashboard must never be publicly reachable. Access is gated by **Vercel
-Authentication** (Settings → Deployment Protection) — keep it enabled; there is
-no app-level auth. The service_role key lives only in Vercel env / `.env.local`,
-never in code or any client bundle.
+so this dashboard must never be publicly reachable. `middleware.ts` enforces
+**Basic auth with `CONSOLE_PASSWORD`** on every route once it is set; without it,
+`/support` and `/products` fail closed (503) while the OCR pages fall back to
+**Vercel Authentication** (Deployment Protection) alone — keep both. Server
+actions on `/products` re-check the password (`requireIdentityReviewer`). The
+service_role key lives only in Vercel env / `.env.local`, never in code or any
+client bundle.

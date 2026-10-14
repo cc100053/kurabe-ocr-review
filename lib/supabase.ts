@@ -26,3 +26,20 @@ export function getSupabaseAdmin(): SupabaseClient {
   });
   return client;
 }
+
+// PostgREST caps every response (1000 rows by default), so a plain select
+// silently truncates. Page with `.range()` until a short page comes back; the
+// query must have a stable order.
+const PAGE = 1000;
+export async function selectAll<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await page(from, from + PAGE - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as T[];
+    out.push(...rows);
+    if (rows.length < PAGE) return out;
+  }
+}
