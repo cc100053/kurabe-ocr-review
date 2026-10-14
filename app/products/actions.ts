@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireIdentityReviewer } from "@/lib/productIdentity";
+import { manualReviewEvidence } from "@/lib/productReview";
 
 export async function queueIdentityPairs() {
   await requireIdentityReviewer();
@@ -16,10 +17,10 @@ export async function reviewIdentityPair(form: FormData) {
   await requireIdentityReviewer();
   const id = Number(form.get("id"));
   const verdict = String(form.get("verdict") ?? "");
-  const evidence = String(form.get("evidence") ?? "").trim();
-  const reviewer = String(form.get("reviewer") ?? "").trim();
-  if (!Number.isSafeInteger(id) || id < 1 || !["same", "different", "cannot_tell"].includes(verdict) || evidence.length < 10 || evidence.length > 4000 || !reviewer || reviewer.length > 100) {
-    throw new Error("請填寫審查人及至少 10 字的照片證據。");
+  const evidence = manualReviewEvidence(verdict, id);
+  const reviewer = "human";
+  if (!Number.isSafeInteger(id) || id < 1 || !["same", "different", "cannot_tell"].includes(verdict)) {
+    throw new Error("無效的審查決定。");
   }
   const { error } = await getSupabaseAdmin().rpc("review_product_identity", {
     p_review_id: id, p_verdict: verdict, p_evidence: evidence, p_reviewer: reviewer,
@@ -31,8 +32,8 @@ export async function reviewIdentityPair(form: FormData) {
 export async function undoIdentityPair(form: FormData) {
   await requireIdentityReviewer();
   const id = Number(form.get("id"));
-  const reviewer = String(form.get("reviewer") ?? "").trim();
-  if (!Number.isSafeInteger(id) || id < 1 || !reviewer || reviewer.length > 100) throw new Error("請填寫審查人。");
+  const reviewer = "human";
+  if (!Number.isSafeInteger(id) || id < 1) throw new Error("無效的審查記錄。");
   const { error } = await getSupabaseAdmin().rpc("undo_product_identity_review", { p_review_id: id, p_reviewer: reviewer });
   if (error) redirect(`/products?error=${encodeURIComponent(error.message)}`);
   revalidatePath("/products");
@@ -42,10 +43,10 @@ export async function correctIdentityRecord(form: FormData) {
   await requireIdentityReviewer();
   const reviewId = Number(form.get("review_id"));
   const recordId = Number(form.get("record_id"));
-  const evidence = String(form.get("evidence") ?? "").trim();
-  const reviewer = String(form.get("reviewer") ?? "").trim();
-  if (![reviewId, recordId].every((id) => Number.isSafeInteger(id) && id > 0) || evidence.length < 10 || evidence.length > 4000 || !reviewer || reviewer.length > 100) {
-    throw new Error("請填寫審查人及原始照片證據。");
+  const evidence = manualReviewEvidence("identity correction", reviewId, recordId);
+  const reviewer = "human";
+  if (![reviewId, recordId].every((id) => Number.isSafeInteger(id) && id > 0)) {
+    throw new Error("無效的身份修正記錄。");
   }
   const values = Object.fromEntries(["brand", "base_product", "variant", "size_value", "size_unit", "jan_code"].map((field) => [field, String(form.get(field) ?? "").trim() || null]));
   const { error } = await getSupabaseAdmin().rpc("correct_product_identity_record", {

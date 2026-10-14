@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { headers } from "next/headers";
 import { getSupabaseAdmin } from "./supabase";
 
-type IdentityRecord = { id: number; image_url: string | null; product_name: string; brand: string | null; base_product: string | null; variant: string | null; size_value: number | null; size_unit: string | null; jan_code: string | null };
+import { type IdentityRecord } from "./productReview";
 type IdentitySide = { id: number; display_name: string; image_url: string | null; merged_into: number | null; records: IdentityRecord[] };
 type IdentityAssessment = { judgement: string; confidence: string; reason: string; visible_evidence: { left: string; right: string }; conflicts: string[]; data_conflicts?: string[]; assessor: string; assessed_at: string };
 type IdentityReview = { id: number; left_product_id: number; right_product_id: number; reason: string; verdict: string | null; evidence: string | null; reviewed_by: string | null; ai_assessment: IdentityAssessment | null; history: Record<string, unknown>[]; sides: IdentitySide[] };
@@ -37,7 +37,7 @@ export async function getProductIdentityReviews(done: boolean): Promise<Identity
     const sides = await Promise.all([review.left_product_id, review.right_product_id].map(async (id) => {
       const product = products!.find((p) => p.id === id)!;
       const { data: records, error: recordError } = await admin.from("price_records")
-        .select("id,image_url,product_name,brand,base_product,variant,size_value,size_unit,jan_code")
+        .select("id,image_url,product_name,brand,base_product,variant,size_value,size_unit,jan_code,price,original_price,is_tax_included,quantity,category_tag,shop_name,created_at")
         .eq("product_id", id).order("id", { ascending: false }).limit(5);
       if (recordError) throw recordError;
       return { ...product, records: records ?? [] };

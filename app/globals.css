@@ -311,3 +311,14 @@ kbd {
   color: var(--muted);
 }
 .badge.warn.rline-edited, .badge.rline-conf { font-size: 10px; }
+
+/* Product identity review: keep each record tied to its own photo and values. */
+.identity-record { border-top: 1px solid var(--border); padding: 10px 0; }
+.identity-record summary { cursor: pointer; }
+.identity-record table th { position: static; width: 42%; }
+.identity-record button, .identity-review > form button {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 7px; padding: 10px 14px; cursor: pointer;
+}
+.identity-record button:focus-visible, .identity-review > form button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.identity-review > form button:disabled { opacity: .5; cursor: default; }

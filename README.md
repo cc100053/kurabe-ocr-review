@@ -49,3 +49,17 @@ weights are retained; corrections invalidate stale assessments and append an aud
 Supabase schema/contracts live in the main app repository's
 `docs/product_identity_review.md` and its product-identity migrations.
 Run `npm run build` before publishing.
+
+### Single-owner review
+
+Product decisions, identity corrections and undo need no typed reviewer or rationale.
+Authenticated server actions stamp `human` and explicitly record a manual action
+without a written rationale; database conflict checks and before/after history remain.
+Each record shows its own photo, saved name, price, tax entry mode, size, quantity,
+category and shop. These are saved values, not guaranteed original AI output.
+Historical price-tag telemetry lacks a verifiable record/photo link, so the page
+labels original AI output unavailable rather than matching by name or timestamp.
+Series/size relationships and cross-size comparison remain deferred to the main
+app repo's `docs/product_series_plan.md`.
+
+Run `node --test test/productReview.test.ts` and `npm run build` before publishing.
