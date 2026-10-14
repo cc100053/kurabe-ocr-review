@@ -5,7 +5,7 @@ import { magnifierGeometry } from "@/lib/magnifier";
 
 export function MagnifiedPhoto({ src, alt, className = "" }: { src: string; alt: string; className?: string }) {
   const image = useRef<HTMLImageElement>(null);
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState(true);
   const [ready, setReady] = useState(false);
   const [lens, setLens] = useState<ReturnType<typeof magnifierGeometry>>(null);
 

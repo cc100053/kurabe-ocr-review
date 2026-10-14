@@ -67,7 +67,7 @@ Run `node --test test/productReview.test.ts` and `npm run build` before publishi
 ### Local photo magnifier
 
 Product-pair, individual-record, price-tag and receipt photos share a 3× local
-magnifier. Enable it with the photo's button, then hover or press/drag; focus the
+magnifier, enabled by default. Hover or press/drag to magnify; focus the
 photo for arrow-key movement and Escape to close. The separate original-photo link
 remains available. Letterboxing is included in coordinate mapping, and disabling
 the magnifier restores touch scrolling. No image processing service or upload is
