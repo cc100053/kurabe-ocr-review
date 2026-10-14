@@ -80,7 +80,9 @@ export function QueueCard({
               <div className="final-val">
                 最終存：<b>{final}</b>
                 {saved ? <span className="tax-tag">{saved}</span> : null}
-                {cue && cue.mode !== item.saved_tax_mode ? (
+                {item.self_checked ? (
+                  <span className="tax-tag">✓ 牌上本体同税込數字一致</span>
+                ) : cue && cue.mode !== item.saved_tax_mode ? (
                   <span className={`tax-tag${saved || cue.conflict ? " conflict" : ""}`}>
                     {cue.label}
                   </span>
@@ -93,7 +95,7 @@ export function QueueCard({
           );
         })()}
 
-        {item.risk_flags.length > 0 ? (
+        {item.risk_flags.length > 0 && !item.self_checked ? (
           <ul className="risks">
             {riskReasons(item.risk_flags).map((r) => (
               <li key={r.flag} className={r.high ? "high" : ""}>

@@ -64,13 +64,17 @@ export default async function ReviewQueue({
       const note = item.scan_id
         ? notes.get(noteKey(item.scan_id, item.field))
         : undefined;
+      const verdict = verdictFromNote(note);
       return {
         item,
-        verdict: verdictFromNote(note),
-        resolved: isResolved(note),
+        verdict,
+        // A self-verifying tag (本体 × rate = 税込) never needs a human.
+        resolved: isResolved(note) || item.self_checked,
         // Badge only when resolved by the loop, not a human verdict (a human
         // verdict already shows via the highlighted button).
-        aiResolved: verdictFromNote(note) ? null : resolutionLabel(note),
+        aiResolved: verdict
+          ? null
+          : (resolutionLabel(note) ?? (item.self_checked ? "自動核對：本体×稅率=税込" : null)),
       };
     });
 

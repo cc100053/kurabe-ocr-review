@@ -1,7 +1,9 @@
 import { getSupabaseAdmin, selectAll } from "./supabase";
 import {
   HIGH_RISK,
+  TAX_CONFLICT_FLAG,
   isPriceField,
+  taxPairConsistent,
   type QueueItem,
   type QueueSource,
 } from "./display";
@@ -106,6 +108,7 @@ export async function getReviewQueue(since: string): Promise<QueueItem[]> {
       occurred_at: r.occurred_at,
       saved_tax_mode: null,
       saved_tax_rate: null,
+      self_checked: false,
     });
   }
 
@@ -126,6 +129,7 @@ export async function getReviewQueue(since: string): Promise<QueueItem[]> {
       occurred_at: r.occurred_at,
       saved_tax_mode: null,
       saved_tax_rate: null,
+      self_checked: false,
     });
   }
 
@@ -138,6 +142,10 @@ export async function getReviewQueue(since: string): Promise<QueueItem[]> {
       item.saved_tax_mode = t.mode;
       item.saved_tax_rate = t.rate;
     }
+    item.self_checked =
+      item.risk_flags.length > 0 &&
+      item.risk_flags.every((f) => f === TAX_CONFLICT_FLAG) &&
+      taxPairConsistent(item.hint, item.saved_value, item.saved_tax_mode, item.saved_tax_rate);
   }
 
   items.sort((a, b) => {
