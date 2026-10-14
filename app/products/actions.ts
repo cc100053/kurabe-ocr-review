@@ -19,7 +19,7 @@ export async function reviewIdentityPair(form: FormData) {
   const verdict = String(form.get("verdict") ?? "");
   const evidence = manualReviewEvidence(verdict, id);
   const reviewer = "human";
-  if (!Number.isSafeInteger(id) || id < 1 || !["same", "different", "cannot_tell"].includes(verdict)) {
+  if (!Number.isSafeInteger(id) || id < 1 || !["same", "different", "same_series", "cannot_tell"].includes(verdict)) {
     throw new Error("無效的審查決定。");
   }
   const { error } = await getSupabaseAdmin().rpc("review_product_identity", {

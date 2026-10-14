@@ -5,7 +5,7 @@ import { recordFields, representativeRecord } from "@/lib/productReview";
 import { queueIdentityPairs, reviewIdentityPair, undoIdentityPair, correctIdentityRecord } from "./actions";
 
 export const dynamic = "force-dynamic";
-const verdictLabels: Record<string, string> = { same: "同款", different: "不同商品", cannot_tell: "無法確認" };
+const verdictLabels: Record<string, string> = { same: "同款", different: "不同商品", same_series: "同系列、不同規格", cannot_tell: "無法確認" };
 const confidenceLabels: Record<string, string> = { high: "高", medium: "中", low: "低" };
 const reasonLabels: Record<string, string> = { "Shared JAN": "JAN 相同", "Shared brand/base": "品牌及品名相同", "Similar names": "名稱相似", "User declined same-product suggestion": "使用者否決同款建議" };
 
@@ -16,7 +16,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   return <>
     <h1>同款商品審查</h1>
     {params.error && <p role="alert" style={{ color: "#b42318" }}>{params.error}</p>}
-    <p>你可直接審查，不需填姓名或理由；系統自動保留決定、修改及撤銷紀錄。AI 照片建議只供參考。完全同款才合併；容量、款式或 JAN 有衝突時先核實資料。</p>
+    <p>你可直接審查，不需填姓名或理由；系統自動保留決定、修改及撤銷紀錄。AI 照片建議只供參考。完全同款才合併；容量、款式或 JAN 有衝突時先核實資料。同一系列但容量或包裝唔同（例如 700ml 補充裝對 1250ml 樽裝）揀「同系列、不同規格」：只會記錄，唔會合併。</p>
     <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 24 }}>
       <Link href="/products">待審</Link><Link href="/products?view=done">已審 / 撤銷</Link>
       <form action={queueIdentityPairs}><button>整理候選（最多 20 組）</button></form>
@@ -74,6 +74,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         <input type="hidden" name="id" value={q.id} />
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <button name="verdict" value="different">不同商品</button>
+          <button name="verdict" value="same_series">同系列、不同規格</button>
           <button name="verdict" value="cannot_tell">無法確認</button>
           <button name="verdict" value="same" disabled={q.sides.some((p) => !p.image_url)}>完全同款 → 合併</button>
         </div>
