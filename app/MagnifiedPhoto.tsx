@@ -62,7 +62,7 @@ export function MagnifiedPhoto({ src, alt, className = "" }: { src: string; alt:
       }}
       onPointerUp={(event) => { if (event.pointerType !== "mouse") setLens(null); }}
       onPointerCancel={() => setLens(null)} onKeyDown={keyMove}
-      onFocus={() => { if (enabled) setLens(locate()); }}>
+      onFocus={(event) => { if (enabled && event.currentTarget.matches(":focus-visible")) setLens(locate()); }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img ref={image} src={src} alt={alt} loading="lazy" draggable={false}
         onLoad={() => setReady(true)} onError={() => { setReady(false); setEnabled(false); setLens(null); }} />
