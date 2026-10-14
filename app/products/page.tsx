@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MagnifiedPhoto } from "../MagnifiedPhoto";
 import { getProductIdentityReviews } from "@/lib/productIdentity";
 import { recordFields, representativeRecord } from "@/lib/productReview";
 import { queueIdentityPairs, reviewIdentityPair, undoIdentityPair, correctIdentityRecord } from "./actions";
@@ -29,18 +30,12 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           return <section key={p.id}>
           <h3>{p.display_name}</h3><p>商品 ID {p.id}{p.merged_into ? ` → ${p.merged_into}` : ""}</p>
           <p><strong>此相目標：{target?.product_name ?? "商品代表照片（下方未有對應記錄）"}</strong></p>
-          {p.image_url ? <a href={p.image_url} target="_blank" rel="noreferrer">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={p.image_url} alt={`${p.display_name} 原始價牌照片`} style={{ width: "100%", height: 280, objectFit: "contain", background: "#f4f4f4" }} />
-          </a> : <p>缺少單商品照片，無法從照片確認。</p>}
+          {p.image_url ? <MagnifiedPhoto src={p.image_url} alt={`${p.display_name} 原始價牌照片`} /> : <p>缺少單商品照片，無法從照片確認。</p>}
           <p className="muted">相中可能有多件商品，請用目標名稱、容量及價格對照價牌；未保存目標位置，不能自動框選。</p>
           {p.records.map((r) => <details key={r.id} open={r.id === (target ?? p.records[0])?.id} className="identity-record">
             <summary>記錄 #{r.id} · {r.product_name} · {r.size_value == null ? "容量未保存" : `${r.size_value}${r.size_unit ?? ""}`} · {r.price == null ? "價格未保存" : `¥${r.price.toLocaleString("ja-JP")}`}</summary>
             <p><strong>本記錄目標商品：{r.product_name}</strong></p>
-            {r.image_url && r.image_url !== p.image_url && <a href={r.image_url} target="_blank" rel="noreferrer">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={r.image_url} alt={`記錄 ${r.id}：${r.product_name} 的原始照片`} style={{ width: "100%", height: 280, objectFit: "contain", background: "#f4f4f4" }} />
-            </a>}
+            {r.image_url && r.image_url !== p.image_url && <MagnifiedPhoto src={r.image_url} alt={`記錄 ${r.id}：${r.product_name} 的原始照片`} />}
             {!r.image_url && <p>本記錄未保存照片，不能用上方代表相核實這筆資料。</p>}
             <p className="muted">目前保存資料（可能經使用者或審查人修正）</p>
             <table aria-label={`記錄 ${r.id} 保存資料`}><tbody>{recordFields(r).map(([label, value]) => <tr key={label}><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table>

@@ -1,4 +1,5 @@
 import { receiptFieldLabel } from "@/lib/display";
+import { MagnifiedPhoto } from "./MagnifiedPhoto";
 import type {
   ReceiptReviewGroup,
   ReceiptReviewLine,
@@ -61,10 +62,7 @@ export function ReceiptCard({
     <article className="receipt-card">
       <div className="receipt-img">
         {group.imageUrl ? (
-          <a href={group.imageUrl} target="_blank" rel="noreferrer" title="開大圖">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={group.imageUrl} alt="receipt" loading="lazy" />
-          </a>
+          <MagnifiedPhoto src={group.imageUrl} alt={`${group.storeName ?? "店舖"} 收據照片`} />
         ) : (
           <div className="card-img no-img">無相</div>
         )}

@@ -322,3 +322,19 @@ kbd {
 }
 .identity-record button:focus-visible, .identity-review > form button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .identity-review > form button:disabled { opacity: .5; cursor: default; }
+
+/* Local magnification uses the contained image bounds, including letterboxing. */
+.photo-magnifier { min-width: 0; }
+.photo-stage { position: relative; }
+.photo-stage > img { display: block; width: 100%; height: 280px; object-fit: contain; border: 0; background: #f4f4f4; }
+.photo-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.photo-lens { position: absolute; z-index: 1; overflow: hidden; pointer-events: none; border-radius: 50%; outline: 2px solid var(--accent); box-shadow: 0 2px 8px #0008; background: #f4f4f4; }
+.photo-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.photo-tools button { color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; min-height: 44px; cursor: pointer; }
+.photo-tools button[aria-pressed="true"] { border-color: var(--accent); }
+.photo-tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.photo-tools button:disabled { opacity: .5; cursor: default; }
+.photo-help { margin: 4px 0; font-size: 12px; }
+.queue-photo { flex: 0 0 132px; width: 132px; }
+.queue-photo .photo-stage > img { height: 132px; border-radius: 8px; }
+.receipt-img .photo-stage > img { height: auto; max-height: 520px; object-fit: contain; }

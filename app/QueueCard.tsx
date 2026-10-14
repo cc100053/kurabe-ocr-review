@@ -7,6 +7,7 @@ import {
 } from "@/lib/display";
 import type { Verdict } from "@/lib/verdict";
 import { VerdictButtons } from "./VerdictButtons";
+import { MagnifiedPhoto } from "./MagnifiedPhoto";
 
 // One price-tag review card: a large scan image to eyeball, the product, the
 // field, what the AI read (and what was saved, if the user changed it), one
@@ -38,16 +39,7 @@ export function QueueCard({
       onMouseDown={onFocus}
     >
       {item.image_url ? (
-        <a
-          className="card-img"
-          href={item.image_url}
-          target="_blank"
-          rel="noreferrer"
-          title="開大圖"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={item.image_url} alt="scan" loading="lazy" />
-        </a>
+        <MagnifiedPhoto src={item.image_url} alt={`${item.product_name ?? "商品"} 價牌照片`} className="queue-photo" />
       ) : (
         <div className="card-img no-img">無相</div>
       )}
