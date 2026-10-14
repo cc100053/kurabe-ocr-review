@@ -1,5 +1,10 @@
 import { getSupabaseAdmin, selectAll } from "./supabase";
-import { HIGH_RISK, type QueueItem, type QueueSource } from "./display";
+import {
+  HIGH_RISK,
+  isPriceField,
+  type QueueItem,
+  type QueueSource,
+} from "./display";
 
 // Re-export the client-safe display helpers/types so existing imports
 // (`from "@/lib/queries"`) keep working for server pages. Client components
@@ -99,6 +104,8 @@ export async function getReviewQueue(since: string): Promise<QueueItem[]> {
       risk_flags: flags,
       high_risk: flags.some((f) => HIGH_RISK.has(f)),
       occurred_at: r.occurred_at,
+      saved_tax_mode: null,
+      saved_tax_rate: null,
     });
   }
 
@@ -117,7 +124,20 @@ export async function getReviewQueue(since: string): Promise<QueueItem[]> {
       risk_flags: flags,
       high_risk: flags.some((f) => HIGH_RISK.has(f)),
       occurred_at: r.occurred_at,
+      saved_tax_mode: null,
+      saved_tax_rate: null,
     });
+  }
+
+  const tax = await getSavedTax(
+    items.filter((i) => i.scan_id && isPriceField(i.field)).map((i) => i.scan_id!),
+  );
+  for (const item of items) {
+    const t = item.scan_id && isPriceField(item.field) ? tax.get(item.scan_id) : undefined;
+    if (t) {
+      item.saved_tax_mode = t.mode;
+      item.saved_tax_rate = t.rate;
+    }
   }
 
   items.sort((a, b) => {
@@ -125,6 +145,36 @@ export async function getReviewQueue(since: string): Promise<QueueItem[]> {
     return b.occurred_at.localeCompare(a.occurred_at);
   });
   return items;
+}
+
+// Saved tax mode/rate per scan, from the scan_record_saved telemetry (no review
+// view carries it). shortcut: reads the event table directly; move it into the
+// review views (app repo migration) if more saved fields are needed.
+async function getSavedTax(
+  scanIds: string[],
+): Promise<Map<string, { mode: string | null; rate: number | null }>> {
+  const ids = [...new Set(scanIds)];
+  const out = new Map<string, { mode: string | null; rate: number | null }>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await getSupabaseAdmin()
+      .from("scan_telemetry_events")
+      .select("occurred_at, scan_id:properties->>scan_id, price:properties->price")
+      .eq("event_name", "scan_record_saved")
+      .in("properties->>scan_id", ids.slice(i, i + 100))
+      .order("occurred_at", { ascending: true });
+    if (error) throw error;
+    // Ascending, so the latest save of a scan wins.
+    for (const row of (data ?? []) as {
+      scan_id: string;
+      price: { saved_tax_mode?: string; saved_tax_rate?: number } | null;
+    }[]) {
+      out.set(row.scan_id, {
+        mode: row.price?.saved_tax_mode ?? null,
+        rate: row.price?.saved_tax_rate ?? null,
+      });
+    }
+  }
+  return out;
 }
 
 export async function getFieldOverview(): Promise<FieldOverview[]> {

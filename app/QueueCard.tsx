@@ -3,6 +3,7 @@ import {
   riskReasons,
   isPriceField,
   taxBasisFromEvidence,
+  savedTaxLabel,
   type QueueItem,
 } from "@/lib/display";
 import type { Verdict } from "@/lib/verdict";
@@ -66,17 +67,22 @@ export function QueueCard({
             item.saved_value && item.saved_value !== "" ? item.saved_value : "∅";
           const aiRead = item.ai_value || "∅";
           const differ = (item.saved_value ?? "") !== item.ai_value;
-          // 含稅/不含稅 tag for price fields, derived from the tag evidence.
-          const tax = isPriceField(item.field)
+          // 含稅/不含稅 of the saved price; the tag's own cue is shown only
+          // when it conflicts or the saved mode is unknown (older apps).
+          const saved = isPriceField(item.field)
+            ? savedTaxLabel(item.saved_tax_mode, item.saved_tax_rate)
+            : null;
+          const cue = isPriceField(item.field)
             ? taxBasisFromEvidence(item.hint)
             : null;
           return (
             <div className="vals">
               <div className="final-val">
                 最終存：<b>{final}</b>
-                {tax ? (
-                  <span className={`tax-tag${tax.conflict ? " conflict" : ""}`}>
-                    {tax.label}
+                {saved ? <span className="tax-tag">{saved}</span> : null}
+                {cue && cue.mode !== item.saved_tax_mode ? (
+                  <span className={`tax-tag${saved || cue.conflict ? " conflict" : ""}`}>
+                    {cue.label}
                   </span>
                 ) : null}
               </div>

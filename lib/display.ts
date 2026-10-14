@@ -22,6 +22,11 @@ export type QueueItem = {
   risk_flags: string[];
   high_risk: boolean;
   occurred_at: string;
+  // The tax mode/rate the user saved with the price (scan_record_saved), so
+  // the reviewer knows whether "最終存" is 含稅 or 不含稅. Null on non-price
+  // fields and on events from apps that did not send them.
+  saved_tax_mode: string | null;
+  saved_tax_rate: number | null;
 };
 
 // Higher-risk flags to surface first (price/tax/food per the review doc).
@@ -96,18 +101,34 @@ export function isPriceField(field: string): boolean {
   return field === "price" || field === "original_price";
 }
 
+// "最終存" tax tag from the saved tax mode: 含稅 / 不含稅, plus the rate.
+export function savedTaxLabel(
+  mode: string | null,
+  rate: number | null,
+): string | null {
+  const base =
+    mode === "included" ? "含稅" : mode === "excluded" ? "不含稅" : null;
+  if (!base) return null;
+  return rate ? `${base} ${Math.round(rate * 100)}%` : base;
+}
+
 // Tax basis derived from the tag evidence cues — mirrors the app's own logic
 // (税込 → included; 税抜/本体 → excluded; both → conflict). Lets a price card
 // show whether the stored number is 含稅/不含稅 without a backend change.
 // Returns null when the evidence carries no cue (e.g. a guard_reason string).
-export type TaxBasis = { label: string; conflict: boolean };
+export type TaxBasis = {
+  label: string;
+  conflict: boolean;
+  mode: "included" | "excluded" | null; // null when the tag shows both
+};
 
 export function taxBasisFromEvidence(text: string | null): TaxBasis | null {
   if (!text) return null;
   const incl = text.includes("税込");
   const excl = text.includes("税抜") || text.includes("本体");
-  if (incl && excl) return { label: "⚠️ 牌上同時有税込+税抜", conflict: true };
-  if (incl) return { label: "含稅（税込）", conflict: false };
-  if (excl) return { label: "不含稅（税抜）", conflict: false };
+  if (incl && excl)
+    return { label: "⚠️ 牌上同時有税込+税抜", conflict: true, mode: null };
+  if (incl) return { label: "牌上：税込", conflict: false, mode: "included" };
+  if (excl) return { label: "牌上：税抜", conflict: false, mode: "excluded" };
   return null;
 }
