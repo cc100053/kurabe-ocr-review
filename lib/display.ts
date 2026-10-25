@@ -36,6 +36,7 @@ export type QueueItem = {
 export const HIGH_RISK = new Set([
   "bundle_price_detected",
   "single_item_price_missing",
+  "multi_buy_price_as_single",
   "tax_inclusive_exclusive_conflict",
   "price_outlier_vs_visible_candidates",
   "food_tax_risk",
@@ -80,6 +81,8 @@ export function receiptFieldLabel(field: string | null): string {
 export const RISK_LABELS: Record<string, string> = {
   bundle_price_detected: "似多件裝/整袋價：核對個價係成袋定單件",
   single_item_price_missing: "搵唔到單件價：確認影到嘅價就係你想記嗰個",
+  multi_buy_price_as_single:
+    "AI 將多件優惠價當單件價，已清空：用戶要自己填單件價，多件價另外存",
   tax_inclusive_exclusive_conflict: "稅込/税抜有衝突：核對個價含唔含稅",
   price_outlier_vs_visible_candidates: "個價同相中其他數字差好遠：確認揀啱咗",
   food_tax_risk: "食品稅率風險：核對分類同稅率啱唔啱",
