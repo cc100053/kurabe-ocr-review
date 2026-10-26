@@ -55,14 +55,13 @@ export function QueueCard({
         <div className="meta">
           <span className="field-chip">{fieldLabel(item.field)}</span>
           <span className="src">
-            {item.source === "corrected" ? "用戶改過" : "未改動"}
+            {item.source === "corrected" ? "輸入曾改動" : "未改動"}
           </span>
         </div>
 
         {(() => {
-          // The verdict judges the FINAL stored value (= saved_value), whether
-          // it came from the AI or a user edit. Show the AI's original read as
-          // muted context only when it differs.
+          // Judge the successful-save snapshot, not an intermediate edit.
+          // Price is the pre-discount input, not the app's tax-included total.
           const final =
             item.saved_value && item.saved_value !== "" ? item.saved_value : "∅";
           const aiRead = item.ai_value || "∅";
@@ -78,7 +77,7 @@ export function QueueCard({
           return (
             <div className="vals">
               <div className="final-val">
-                最終存：<b>{final}</b>
+                {isPriceField(item.field) ? "儲存時輸入價" : "儲存時"}：<b>{final}</b>
                 {saved ? <span className="tax-tag">{saved}</span> : null}
                 {item.self_checked ? (
                   <span className="tax-tag">✓ 牌上本体同税込數字一致</span>
@@ -88,6 +87,9 @@ export function QueueCard({
                   </span>
                 ) : null}
               </div>
+              {isPriceField(item.field) ? (
+                <div className="muted">折扣前輸入價；App 顯示含稅、折扣後總價。</div>
+              ) : null}
               {differ ? (
                 <div className="ai-orig muted">AI 原讀：{aiRead}</div>
               ) : null}

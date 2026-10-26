@@ -17,13 +17,13 @@ export type QueueItem = {
   product_name: string | null;
   image_url: string | null;
   ai_value: string; // what the AI read
-  saved_value: string | null; // what was finally saved (differs only when corrected)
+  saved_value: string | null; // successful-save snapshot; price is the pre-discount input
   hint: string | null; // evidence text or guard reason — a short eyeball aid
   risk_flags: string[];
   high_risk: boolean;
   occurred_at: string;
   // The tax mode/rate the user saved with the price (scan_record_saved), so
-  // the reviewer knows whether "最終存" is 含稅 or 不含稅. Null on non-price
+  // the reviewer knows whether the saved input is 含稅 or 不含稅. Null on non-price
   // fields and on events from apps that did not send them.
   saved_tax_mode: string | null;
   saved_tax_rate: number | null;

@@ -77,7 +77,12 @@ function toFlags(v: unknown): string[] {
 
 function fmtValue(v: unknown): string {
   if (v == null) return "";
-  if (typeof v === "object") return JSON.stringify(v);
+  if (typeof v === "object") {
+    if ("type" in v && "value" in v) {
+      return v.type == null || v.type === "none" ? "none" : `${v.type}:${fmtValue(v.value)}`;
+    }
+    return JSON.stringify(v);
+  }
   return String(v);
 }
 
@@ -101,7 +106,7 @@ export async function getReviewQueue(since: string): Promise<QueueItem[]> {
       product_name: r.product_name,
       image_url: r.image_url,
       ai_value: r.ai_value ?? "",
-      saved_value: r.saved_value,
+      saved_value: null,
       hint: r.evidence_text,
       risk_flags: flags,
       high_risk: flags.some((f) => HIGH_RISK.has(f)),
@@ -122,7 +127,7 @@ export async function getReviewQueue(since: string): Promise<QueueItem[]> {
       product_name: r.product_name,
       image_url: r.image_url,
       ai_value: fmtValue(r.ai_value),
-      saved_value: fmtValue(r.current_value),
+      saved_value: null,
       hint: r.guard_reason,
       risk_flags: flags,
       high_risk: flags.some((f) => HIGH_RISK.has(f)),
@@ -133,50 +138,73 @@ export async function getReviewQueue(since: string): Promise<QueueItem[]> {
     });
   }
 
-  const tax = await getSavedTax(
-    items.filter((i) => i.scan_id && isPriceField(i.field)).map((i) => i.scan_id!),
+  const saved = await getSavedFields(
+    items.filter((i) => i.scan_id).map((i) => i.scan_id!),
   );
-  for (const item of items) {
-    const t = item.scan_id && isPriceField(item.field) ? tax.get(item.scan_id) : undefined;
-    if (t) {
-      item.saved_tax_mode = t.mode;
-      item.saved_tax_rate = t.rate;
+  const savedItems = items.filter((item) => {
+    const snapshot = item.scan_id ? saved.get(item.scan_id) : undefined;
+    // Field-change events include intermediate and abandoned edits.
+    if (!snapshot) return false;
+    item.saved_value = snapshot.values[isPriceField(item.field) ? "price" : item.field] ?? null;
+    if (isPriceField(item.field)) {
+      item.saved_tax_mode = snapshot.mode;
+      item.saved_tax_rate = snapshot.rate;
     }
     item.self_checked =
       item.risk_flags.length > 0 &&
       item.risk_flags.every((f) => f === TAX_CONFLICT_FLAG) &&
       taxPairConsistent(item.hint, item.saved_value, item.saved_tax_mode, item.saved_tax_rate);
-  }
+    return true;
+  });
 
-  items.sort((a, b) => {
+  savedItems.sort((a, b) => {
     if (a.high_risk !== b.high_risk) return a.high_risk ? -1 : 1;
     return b.occurred_at.localeCompare(a.occurred_at);
   });
-  return items;
+  return savedItems;
 }
 
-// Saved tax mode/rate per scan, from the scan_record_saved telemetry (no review
-// view carries it). shortcut: reads the event table directly; move it into the
-// review views (app repo migration) if more saved fields are needed.
-async function getSavedTax(
-  scanIds: string[],
-): Promise<Map<string, { mode: string | null; rate: number | null }>> {
+// The successful-save snapshot is authoritative; current_value in the
+// correction feed is only the value at the time of one edit.
+type SavedFields = {
+  values: Record<string, string>;
+  mode: string | null;
+  rate: number | null;
+};
+
+type SavedEvent = {
+  scan_id: string;
+  price: { saved_original_price?: number | null; saved_tax_mode?: string; saved_tax_rate?: number } | null;
+  category: { saved?: string | null } | null;
+  grams: { saved?: number | null } | null;
+  discount: { saved_discount_type?: string; saved_discount_value?: number | null } | null;
+};
+
+async function getSavedFields(scanIds: string[]): Promise<Map<string, SavedFields>> {
   const ids = [...new Set(scanIds)];
-  const out = new Map<string, { mode: string | null; rate: number | null }>();
+  const out = new Map<string, SavedFields>();
   for (let i = 0; i < ids.length; i += 100) {
-    const { data, error } = await getSupabaseAdmin()
-      .from("scan_telemetry_events")
-      .select("occurred_at, scan_id:properties->>scan_id, price:properties->price")
-      .eq("event_name", "scan_record_saved")
-      .in("properties->>scan_id", ids.slice(i, i + 100))
-      .order("occurred_at", { ascending: true });
-    if (error) throw error;
-    // Ascending, so the latest save of a scan wins.
-    for (const row of (data ?? []) as {
-      scan_id: string;
-      price: { saved_tax_mode?: string; saved_tax_rate?: number } | null;
-    }[]) {
+    const rows = await selectAll<SavedEvent>((from, to) =>
+      getSupabaseAdmin()
+        .from("scan_telemetry_events")
+        .select("scan_id:properties->>scan_id, price:properties->price, category:properties->category, grams:properties->grams, discount:properties->discount")
+        .eq("event_name", "scan_record_saved")
+        .in("properties->>scan_id", ids.slice(i, i + 100))
+        .order("occurred_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
+    // Ascending, so the latest successful save supplies every field together.
+    for (const row of rows) {
+      const discount = row.discount?.saved_discount_type;
       out.set(row.scan_id, {
+        values: {
+          price: fmtValue(row.price?.saved_original_price),
+          category: fmtValue(row.category?.saved),
+          grams: fmtValue(row.grams?.saved),
+          discount: discount == null ? "" : discount === "none" ? "none"
+            : `${discount}:${fmtValue(row.discount?.saved_discount_value)}`,
+        },
         mode: row.price?.saved_tax_mode ?? null,
         rate: row.price?.saved_tax_rate ?? null,
       });
