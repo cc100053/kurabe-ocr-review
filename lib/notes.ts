@@ -24,7 +24,7 @@ export async function getNotesMap(): Promise<Map<string, ReviewNote>> {
     getSupabaseAdmin()
       .from("scan_review_notes")
       .select(
-        "scan_id, field, status, root_cause, action_taken, linked_pr_url, note, reviewed_by, updated_at",
+        "scan_id, field, status, root_cause, action_taken, linked_pr_url, note, reviewed_by, updated_at, event_id",
       )
       .order("id")
       .range(from, to),

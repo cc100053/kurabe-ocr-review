@@ -53,8 +53,10 @@ export function ReceiptCard({
   wrongFields,
   onBlame,
   onConfirmRest,
+  disabled,
 }: {
   group: ReceiptReviewGroup;
+  disabled: boolean;
   verdicts: Map<string, Verdict>;
   focusedIdx: number;
   lineFocus: Map<string, number>;
@@ -92,6 +94,7 @@ export function ReceiptCard({
           {bulk.length > 0 ? (
             <button
               type="button"
+              disabled={disabled}
               className="confirm-rest"
               onClick={() => onConfirmRest(bulk.map((l) => l.scanId))}
               title="其餘未審嘅行全部標 ✓（分類修正要逐行確認）"
@@ -116,6 +119,7 @@ export function ReceiptCard({
                 className={`rline${v ? " decided" : ""}${focused ? " focused" : ""}`}
                 data-focus={focusId}
                 onMouseDown={() => onFocusLine(line.scanId)}
+                onFocusCapture={() => onFocusLine(line.scanId)}
               >
                 <span className="rline-idx mono muted">
                   {line.lineIndex + 1}
@@ -150,7 +154,7 @@ export function ReceiptCard({
                   <div className="rline-vals muted">
                     <span className="field-chip sm">分類</span> <Cell pair={line.category} />
                     {"　"}
-                    <span className="field-chip sm">價</span> ¥<Cell pair={line.price} />
+                    <span className="field-chip sm">輸入價</span> ¥<Cell pair={line.price} />
                     {"　"}
                     <span className="rline-tax">{taxTag(line.taxBasis.saved)}</span>
                   </div>
@@ -164,6 +168,7 @@ export function ReceiptCard({
                           <button
                             key={f}
                             type="button"
+                            disabled={disabled}
                             aria-pressed={on}
                             className={on ? "on" : ""}
                             onClick={() =>
@@ -182,6 +187,7 @@ export function ReceiptCard({
                 </div>
                 <VerdictButtons
                   current={v}
+                  disabled={disabled}
                   compact
                   onVerdict={(verdict) => onVerdictLine(line.scanId, verdict)}
                 />

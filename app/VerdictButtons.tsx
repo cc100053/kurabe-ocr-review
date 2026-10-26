@@ -9,16 +9,19 @@ export function VerdictButtons({
   current,
   onVerdict,
   compact = false,
+  disabled = false,
 }: {
   current: Verdict | null;
   onVerdict: (verdict: Verdict | null) => void;
   compact?: boolean;
+  disabled?: boolean;
 }) {
   const pick = (v: Verdict) => onVerdict(current === v ? null : v);
   return (
     <div className={`verdict${compact ? " compact" : ""}`}>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => pick("correct")}
         className={`v v-ok${current === "correct" ? " on" : ""}`}
         title="啱 (1)"
@@ -27,6 +30,7 @@ export function VerdictButtons({
       </button>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => pick("wrong")}
         className={`v v-bad${current === "wrong" ? " on" : ""}`}
         title="錯 (2)"
@@ -35,6 +39,7 @@ export function VerdictButtons({
       </button>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => pick("cannot_tell")}
         className={`v v-idk${current === "cannot_tell" ? " on" : ""}`}
         title="睇唔到 (3)"

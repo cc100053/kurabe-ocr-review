@@ -48,13 +48,10 @@ export type ReceiptFieldOverview = {
 };
 
 export async function getReceiptConfusion(): Promise<ReceiptConfusionRow[]> {
-  const { data, error } = await getSupabaseAdmin()
-    .from("receipt_field_confusion_summary")
-    .select("*")
-    .order("corrected_count", { ascending: false })
-    .order("sample_count", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as ReceiptConfusionRow[];
+  return selectAll<ReceiptConfusionRow>((from, to) => getSupabaseAdmin()
+    .from("receipt_field_confusion_summary").select("*")
+    .order("corrected_count", { ascending: false }).order("sample_count", { ascending: false })
+    .order("field_name").order("ai_value").order("saved_value").range(from, to));
 }
 
 export async function getReceiptCorrectionSamples(): Promise<
@@ -185,14 +182,21 @@ export async function getReceiptReviewGroups(
       .gt("occurred_at", since)
       .order("occurred_at", { ascending: false })
       .order("scan_id")
+      .order("event_id", { ascending: false })
       .range(from, to),
   );
 
   const groups = new Map<string, ReceiptReviewGroup>();
+  const seen = new Set<string>();
+  const photoSets = new Map<string, Set<string | null>>();
   for (const r of rows) {
-    if (!r.scan_id) continue;
+    if (!r.scan_id || seen.has(r.scan_id)) continue;
+    seen.add(r.scan_id);
     const hash = r.scan_id.lastIndexOf("#");
     const base = hash >= 0 ? r.scan_id.slice(0, hash) : r.scan_id;
+    const photos = photoSets.get(base) ?? new Set<string | null>();
+    photos.add(r.image_url);
+    photoSets.set(base, photos);
     const lineIndex = hash >= 0 ? Number(r.scan_id.slice(hash + 1)) || 0 : 0;
     // changed_fields.category is also true for an accepted memory prefill; the
     // newer view's category_corrected is the real "user changed it" signal.
@@ -235,7 +239,10 @@ export async function getReceiptReviewGroups(
   }
 
   const out = [...groups.values()].filter((g) => g.lines.length > 0);
-  for (const g of out) g.lines.sort((a, b) => a.lineIndex - b.lineIndex);
+  for (const g of out) {
+    g.lines.sort((a, b) => a.lineIndex - b.lineIndex);
+    if (photoSets.get(g.baseScanId)!.size > 1) g.imageUrl = null;
+  }
   out.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
   return out;
 }

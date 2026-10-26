@@ -23,6 +23,7 @@ export function QueueCard({
   focusId,
   onFocus,
   onVerdict,
+  disabled,
 }: {
   item: QueueItem;
   verdict: Verdict | null;
@@ -30,6 +31,7 @@ export function QueueCard({
   focused: boolean;
   focusId?: number;
   onFocus: () => void;
+  disabled: boolean;
   onVerdict: (verdict: Verdict | null) => void;
 }) {
   const decided = verdict || aiResolved;
@@ -38,6 +40,7 @@ export function QueueCard({
       className={`card${decided ? " decided" : ""}${focused ? " focused" : ""}`}
       data-focus={focusId}
       onMouseDown={onFocus}
+      onFocusCapture={onFocus}
     >
       {item.image_url ? (
         <MagnifiedPhoto src={item.image_url} alt={`${item.product_name ?? "商品"} 價牌照片`} className="queue-photo" />
@@ -46,6 +49,7 @@ export function QueueCard({
       )}
 
       <div className="card-body">
+        {item.image_source === "legacy" && item.image_url ? <div className="muted">舊相片：按儲存資料推斷，未有精確關聯</div> : null}
         <div className="card-head">
           <span className="product">{item.product_name ?? "（無名）"}</span>
           {aiResolved ? <span className="badge ok">{aiResolved}</span> : null}
@@ -79,9 +83,7 @@ export function QueueCard({
               <div className="final-val">
                 {isPriceField(item.field) ? "儲存時輸入價" : "儲存時"}：<b>{final}</b>
                 {saved ? <span className="tax-tag">{saved}</span> : null}
-                {item.self_checked ? (
-                  <span className="tax-tag">✓ 牌上本体同税込數字一致</span>
-                ) : cue && cue.mode !== item.saved_tax_mode ? (
+                {cue && cue.mode !== item.saved_tax_mode ? (
                   <span className={`tax-tag${saved || cue.conflict ? " conflict" : ""}`}>
                     {cue.label}
                   </span>
@@ -97,7 +99,7 @@ export function QueueCard({
           );
         })()}
 
-        {item.risk_flags.length > 0 && !item.self_checked ? (
+        {item.risk_flags.length > 0 ? (
           <ul className="risks">
             {riskReasons(item.risk_flags).map((r) => (
               <li key={r.flag} className={r.high ? "high" : ""}>
@@ -117,7 +119,7 @@ export function QueueCard({
         {item.scan_id ? (
           <div className="verdict-block">
             <div className="ask">存咗嘅值啱唔啱？</div>
-            <VerdictButtons current={verdict} onVerdict={onVerdict} />
+            <VerdictButtons disabled={disabled} current={verdict} onVerdict={onVerdict} />
           </div>
         ) : (
           <div className="hint muted">無 scan_id，無法記錄</div>

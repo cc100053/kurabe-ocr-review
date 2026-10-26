@@ -1,11 +1,7 @@
 import { getSupabaseAdmin, selectAll } from "./supabase";
 import {
   HIGH_RISK,
-  TAX_CONFLICT_FLAG,
-  isPriceField,
-  taxPairConsistent,
   type QueueItem,
-  type QueueSource,
 } from "./display";
 
 // Re-export the client-safe display helpers/types so existing imports
@@ -75,142 +71,27 @@ function toFlags(v: unknown): string[] {
   return Array.isArray(v) ? v.map(String) : [];
 }
 
-function fmtValue(v: unknown): string {
-  if (v == null) return "";
-  if (typeof v === "object") {
-    if ("type" in v && "value" in v) {
-      return v.type == null || v.type === "none" ? "none" : `${v.type}:${fmtValue(v.value)}`;
-    }
-    return JSON.stringify(v);
-  }
-  return String(v);
-}
-
-// The single feed behind the review queue. High-risk first, then newest.
-// Merges suspicious (flagged but untouched) + corrected (user overrode AI).
-// `since` is the queue baseline: only cases after it are fetched (all of them).
+// The view supplies values, photo and identity from one successful save.
 export async function getReviewQueue(since: string): Promise<QueueItem[]> {
-  const [suspicious, corrected] = await Promise.all([
-    getSuspicious(since),
-    getCorrectionSamples(since),
-  ]);
-
-  const items: QueueItem[] = [];
-
-  for (const r of suspicious) {
+  type Row = {
+    event_id: number; scan_id: string; field_name: string; source: QueueItem["source"];
+    product_name: string | null; image_url: string | null; image_source: QueueItem["image_source"];
+    ai_value: string | null; saved_value: string | null; evidence_text: string | null;
+    risk_flags: unknown; occurred_at: string; saved_tax_mode: string | null; saved_tax_rate: number | null;
+  };
+  const rows = await selectAll<Row>((from, to) => getSupabaseAdmin()
+    .from("scan_review_queue").select("*").gt("occurred_at", since)
+    .order("occurred_at", { ascending: false }).order("event_id").order("field_name").range(from, to));
+  return rows.map((r) => {
     const flags = toFlags(r.risk_flags);
-    items.push({
-      source: "suspicious" as QueueSource,
-      scan_id: r.scan_id,
-      field: r.field_name,
-      product_name: r.product_name,
-      image_url: r.image_url,
-      ai_value: r.ai_value ?? "",
-      saved_value: null,
-      hint: r.evidence_text,
-      risk_flags: flags,
-      high_risk: flags.some((f) => HIGH_RISK.has(f)),
-      occurred_at: r.occurred_at,
-      saved_tax_mode: null,
-      saved_tax_rate: null,
-      self_checked: false,
-    });
-  }
-
-  for (const r of corrected) {
-    if (!r.field_name) continue;
-    const flags = toFlags(r.risk_flags);
-    items.push({
-      source: "corrected" as QueueSource,
-      scan_id: r.scan_id,
-      field: r.field_name,
-      product_name: r.product_name,
-      image_url: r.image_url,
-      ai_value: fmtValue(r.ai_value),
-      saved_value: null,
-      hint: r.guard_reason,
-      risk_flags: flags,
-      high_risk: flags.some((f) => HIGH_RISK.has(f)),
-      occurred_at: r.occurred_at,
-      saved_tax_mode: null,
-      saved_tax_rate: null,
-      self_checked: false,
-    });
-  }
-
-  const saved = await getSavedFields(
-    items.filter((i) => i.scan_id).map((i) => i.scan_id!),
-  );
-  const savedItems = items.filter((item) => {
-    const snapshot = item.scan_id ? saved.get(item.scan_id) : undefined;
-    // Field-change events include intermediate and abandoned edits.
-    if (!snapshot) return false;
-    item.saved_value = snapshot.values[isPriceField(item.field) ? "price" : item.field] ?? null;
-    if (isPriceField(item.field)) {
-      item.saved_tax_mode = snapshot.mode;
-      item.saved_tax_rate = snapshot.rate;
-    }
-    item.self_checked =
-      item.risk_flags.length > 0 &&
-      item.risk_flags.every((f) => f === TAX_CONFLICT_FLAG) &&
-      taxPairConsistent(item.hint, item.saved_value, item.saved_tax_mode, item.saved_tax_rate);
-    return true;
-  });
-
-  savedItems.sort((a, b) => {
-    if (a.high_risk !== b.high_risk) return a.high_risk ? -1 : 1;
-    return b.occurred_at.localeCompare(a.occurred_at);
-  });
-  return savedItems;
-}
-
-// The successful-save snapshot is authoritative; current_value in the
-// correction feed is only the value at the time of one edit.
-type SavedFields = {
-  values: Record<string, string>;
-  mode: string | null;
-  rate: number | null;
-};
-
-type SavedEvent = {
-  scan_id: string;
-  price: { saved_original_price?: number | null; saved_tax_mode?: string; saved_tax_rate?: number } | null;
-  category: { saved?: string | null } | null;
-  grams: { saved?: number | null } | null;
-  discount: { saved_discount_type?: string; saved_discount_value?: number | null } | null;
-};
-
-async function getSavedFields(scanIds: string[]): Promise<Map<string, SavedFields>> {
-  const ids = [...new Set(scanIds)];
-  const out = new Map<string, SavedFields>();
-  for (let i = 0; i < ids.length; i += 100) {
-    const rows = await selectAll<SavedEvent>((from, to) =>
-      getSupabaseAdmin()
-        .from("scan_telemetry_events")
-        .select("scan_id:properties->>scan_id, price:properties->price, category:properties->category, grams:properties->grams, discount:properties->discount")
-        .eq("event_name", "scan_record_saved")
-        .in("properties->>scan_id", ids.slice(i, i + 100))
-        .order("occurred_at", { ascending: true })
-        .order("id", { ascending: true })
-        .range(from, to),
-    );
-    // Ascending, so the latest successful save supplies every field together.
-    for (const row of rows) {
-      const discount = row.discount?.saved_discount_type;
-      out.set(row.scan_id, {
-        values: {
-          price: fmtValue(row.price?.saved_original_price),
-          category: fmtValue(row.category?.saved),
-          grams: fmtValue(row.grams?.saved),
-          discount: discount == null ? "" : discount === "none" ? "none"
-            : `${discount}:${fmtValue(row.discount?.saved_discount_value)}`,
-        },
-        mode: row.price?.saved_tax_mode ?? null,
-        rate: row.price?.saved_tax_rate ?? null,
-      });
-    }
-  }
-  return out;
+    return {
+      event_id: r.event_id, scan_id: r.scan_id, field: r.field_name, source: r.source,
+      product_name: r.product_name, image_url: r.image_url, image_source: r.image_source,
+      ai_value: r.ai_value ?? "", saved_value: r.saved_value, hint: r.evidence_text,
+      risk_flags: flags, high_risk: flags.some((f) => HIGH_RISK.has(f)), occurred_at: r.occurred_at,
+      saved_tax_mode: r.saved_tax_mode, saved_tax_rate: r.saved_tax_rate,
+    };
+  }).sort((a, b) => Number(b.high_risk) - Number(a.high_risk) || b.occurred_at.localeCompare(a.occurred_at));
 }
 
 export async function getFieldOverview(): Promise<FieldOverview[]> {
@@ -223,13 +104,10 @@ export async function getFieldOverview(): Promise<FieldOverview[]> {
 }
 
 export async function getConfusion(): Promise<ConfusionRow[]> {
-  const { data, error } = await getSupabaseAdmin()
-    .from("scan_field_confusion_summary")
-    .select("*")
-    .order("sample_count", { ascending: false })
-    .order("count_7d", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as ConfusionRow[];
+  return selectAll<ConfusionRow>((from, to) => getSupabaseAdmin()
+    .from("scan_field_confusion_summary").select("*")
+    .order("sample_count", { ascending: false }).order("count_7d", { ascending: false })
+    .order("field_name").order("ai_value").order("saved_value").range(from, to));
 }
 
 export async function getCorrectionSamples(

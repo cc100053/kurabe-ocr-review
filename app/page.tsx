@@ -2,6 +2,7 @@ import { getReviewQueue, fieldLabel } from "@/lib/queries";
 import { getReceiptReviewGroups } from "@/lib/receiptQueries";
 import {
   getNotesMap,
+  noteForEvent,
   noteKey,
   verdictFromNote,
   isResolved,
@@ -62,19 +63,19 @@ export default async function ReviewQueue({
   const showPrice = source === "all" || source === "price";
   const decorated = queue.map((item) => {
       const note = item.scan_id
-        ? notes.get(noteKey(item.scan_id, item.field))
+        ? noteForEvent(notes, item.scan_id, item.field, item.event_id, item.occurred_at)
         : undefined;
       const verdict = verdictFromNote(note);
       return {
         item,
         verdict,
         // A self-verifying tag (本体 × rate = 税込) never needs a human.
-        resolved: isResolved(note) || item.self_checked,
+        resolved: isResolved(note),
         // Badge only when resolved by the loop, not a human verdict (a human
         // verdict already shows via the highlighted button).
         aiResolved: verdict
           ? null
-          : (resolutionLabel(note) ?? (item.self_checked ? "自動核對：本体×稅率=税込" : null)),
+          : resolutionLabel(note),
       };
     });
 
@@ -90,17 +91,18 @@ export default async function ReviewQueue({
 
   // ---- Receipt cards (image-backed; no risk concept) ----
   const showReceipt = source === "all" || source === "receipt";
-  const lineResolved = (scanId: string) =>
-    isResolved(notes.get(noteKey(scanId, "line")));
+  const lineNote = (l: (typeof receiptGroups)[number]["lines"][number]) =>
+    noteForEvent(notes, l.scanId, "line", l.eventId, l.occurredAt);
+  const lineResolved = (l: (typeof receiptGroups)[number]["lines"][number]) => isResolved(lineNote(l));
 
   const allReceiptRows = showReceipt
     ? receiptGroups.filter((g) => {
-          const unresolved = g.lines.filter((l) => !lineResolved(l.scanId));
+          const unresolved = g.lines.filter((l) => !lineResolved(l));
           if (view === "todo") return unresolved.length > 0;
           if (view === "done") return unresolved.length === 0;
           if (view === "high") return false; // receipts carry no risk flags
           return true; // all
-        })
+        }).map((g) => view === "todo" ? { ...g, lines: g.lines.filter((l) => !lineResolved(l)) } : g)
     : [];
 
   // 待審 is served one sitting at a time; receipts holding category-memory
@@ -115,7 +117,7 @@ export default async function ReviewQueue({
     );
   }
   const unresolvedLines = (g: (typeof allReceiptRows)[number]) =>
-    g.lines.filter((l) => !lineResolved(l.scanId)).length;
+    g.lines.filter((l) => !lineResolved(l)).length;
   const batch = pending
     ? takeBatch(allPriceRows, allReceiptRows, unresolvedLines)
     : { price: allPriceRows, receipts: allReceiptRows };
@@ -140,7 +142,7 @@ export default async function ReviewQueue({
   for (const g of receiptRows) {
     for (const l of g.lines) {
       const key = noteKey(l.scanId, "line");
-      const note = notes.get(key);
+      const note = lineNote(l);
       const v = verdictFromNote(note);
       if (v) initialVerdicts[key] = v;
       const blamed = wrongFieldsFromNote(note);
@@ -166,7 +168,7 @@ export default async function ReviewQueue({
         </form>
       </div>
       <p className="subtitle">
-        睇住相,判斷存咗嘅值啱定錯。每批最多 20 個;收據只列改過、記憶預填或
+        睇住相,判斷存咗嘅值啱定錯。每批約 20 個;收據只列改過、記憶預填或
         AI 冇信心嘅行,其餘默認啱。統計同 pattern 交俾 AI 直接讀 view。
         {clearedLabel
           ? `（已清空至 ${clearedLabel} UTC,只顯示之後嘅新 case）`

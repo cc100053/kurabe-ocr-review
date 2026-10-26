@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
 } from "react";
 import { noteKey, type ReceiptField, type Verdict } from "@/lib/verdict";
 import type { QueueItem } from "@/lib/display";
@@ -20,13 +19,12 @@ import {
   setLineWrongFields,
 } from "./actions";
 
-// A focusable review unit: one price card, or one receipt line. memoryEventId
-// is set only on receipt lines that are category-memory source candidates.
+// One focusable unit is bound to the successful save event shown on its card.
 type Unit = {
   scanId: string;
   field: string;
   key: string;
-  memoryEventId: number | null;
+  eventId: number;
 };
 
 const NUM_TO_VERDICT: Record<string, Verdict> = {
@@ -36,10 +34,9 @@ const NUM_TO_VERDICT: Record<string, Verdict> = {
 };
 
 // The interactive review surface. Owns: keyboard focus across every reviewable
-// unit (price cards + receipt lines), the live verdict overlay, and the
-// server-action calls. Verdicts apply optimistically and DON'T trigger a refetch
-// (cards stay put for fast keyboard review); persistence happens server-side and
-// real state refreshes on the next navigation (pages are force-dynamic).
+// unit (price cards + receipt lines), the acknowledged verdict overlay and
+// server-action calls. Cards stay in place after successful persistence; errors
+// preserve the previous verdict and allow retry.
 export function ReviewBoard({
   items,
   receipts,
@@ -64,7 +61,9 @@ export function ReviewBoard({
     Map<string, ReceiptField[]>
   >(() => new Map(Object.entries(initialWrongFields)));
   const [focusedIdx, setFocusedIdx] = useState(0);
-  const [, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
 
   // Flat, ordered list of focusable units + the focus-index assigned to each
   // rendered element (price cards first, then receipt lines). Items with no
@@ -77,16 +76,17 @@ export function ReviewBoard({
       if (!it.scan_id) continue;
       const key = noteKey(it.scan_id, it.field);
       pf.set(key, u.length);
-      u.push({ scanId: it.scan_id, field: it.field, key, memoryEventId: null });
+      u.push({ scanId: it.scan_id, field: it.field, key, eventId: it.event_id });
     }
     for (const g of receipts) {
       for (const l of g.lines) {
+        if (l.eventId == null) continue;
         lf.set(l.scanId, u.length);
         u.push({
           scanId: l.scanId,
           field: "line",
           key: noteKey(l.scanId, "line"),
-          memoryEventId: l.categoryCorrected ? l.eventId : null,
+          eventId: l.eventId!,
         });
       }
     }
@@ -99,47 +99,55 @@ export function ReviewBoard({
   const focusRef = useRef(0);
   focusRef.current = focusedIdx;
 
-  const decide = useCallback(
-    (unit: Unit, verdict: Verdict | null) => {
-      const { scanId, field, key, memoryEventId } = unit;
-      setVerdicts((prev) => {
-        const next = new Map(prev);
-        if (verdict === null) next.delete(key);
-        else next.set(key, verdict);
-        return next;
-      });
-      setWrongFieldsState((prev) => {
-        if (!prev.has(key)) return prev;
-        const next = new Map(prev);
-        next.delete(key);
-        return next;
-      });
-      startTransition(async () => {
-        if (verdict === null) await clearVerdict(scanId, field, memoryEventId);
-        else await setVerdict(scanId, field, verdict, memoryEventId);
-      });
-    },
-    [],
-  );
+  const persist = useCallback(async (write: () => Promise<void>, apply: () => void): Promise<boolean> => {
+    if (inFlight.current) return false;
+    inFlight.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      await write();
+      apply();
+      return true;
+    } catch {
+      setError("判決未儲存。請再試；如果資料已更新，請重新整理。畫面保留原有判決；請重新整理確認儲存狀態。");
+      return false;
+    } finally {
+      inFlight.current = false;
+      setPending(false);
+    }
+  }, []);
+
+  const decide = useCallback((unit: Unit, verdict: Verdict | null) => {
+    const { scanId, field, key, eventId } = unit;
+    return persist(
+      () => verdict === null ? clearVerdict(scanId, field, eventId) : setVerdict(scanId, field, verdict, eventId),
+      () => {
+        setVerdicts((prev) => {
+          const next = new Map(prev);
+          if (verdict === null) next.delete(key); else next.set(key, verdict);
+          return next;
+        });
+        setWrongFieldsState((prev) => { const next = new Map(prev); next.delete(key); return next; });
+      },
+    );
+  }, [persist]);
 
   const blame = useCallback((unit: Unit, fields: ReceiptField[]) => {
-    setWrongFieldsState((prev) => new Map(prev).set(unit.key, fields));
-    startTransition(async () => {
-      await setLineWrongFields(unit.scanId, fields, unit.memoryEventId);
-    });
-  }, []);
+    void persist(() => setLineWrongFields(unit.scanId, fields, unit.eventId),
+      () => setWrongFieldsState((prev) => new Map(prev).set(unit.key, fields)));
+  }, [persist]);
 
   const confirmRest = useCallback((scanIds: string[]) => {
-    if (scanIds.length === 0) return;
-    setVerdicts((prev) => {
-      const next = new Map(prev);
-      for (const id of scanIds) next.set(noteKey(id, "line"), "correct");
-      return next;
+    const events = scanIds.map((id) => unitsRef.current.find((u) => u.scanId === id && u.field === "line"));
+    if (!events.length || events.some((u) => !u)) return;
+    void persist(() => confirmReceiptRest(events.map((u) => ({ scan_id: u!.scanId, event_id: u!.eventId }))), () => {
+      setVerdicts((prev) => {
+        const next = new Map(prev);
+        for (const id of scanIds) next.set(noteKey(id, "line"), "correct");
+        return next;
+      });
     });
-    startTransition(async () => {
-      await confirmReceiptRest(scanIds);
-    });
-  }, []);
+  }, [persist]);
 
   const moveFocus = useCallback((delta: number) => {
     setFocusedIdx((i) => {
@@ -168,13 +176,15 @@ export function ReviewBoard({
         e.preventDefault();
         const cur = u[focusRef.current];
         if (cur) {
-          decide(cur, NUM_TO_VERDICT[k]);
-          moveFocus(1);
+          const decidedIdx = focusRef.current;
+          void decide(cur, NUM_TO_VERDICT[k]).then((ok) => {
+            if (ok && focusRef.current === decidedIdx) moveFocus(1);
+          });
         }
       } else if (k === "u") {
         e.preventDefault();
         const cur = u[focusRef.current];
-        if (cur) decide(cur, null);
+        if (cur) void decide(cur, null);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -200,10 +210,12 @@ export function ReviewBoard({
   }
 
   const unitOf = (key: string) => units.find((u) => u.key === key);
-  const batchDone = units.length > 0 && decidedCount === units.length;
+  const batchDone = !pending && units.length > 0 && decidedCount === units.length;
 
   return (
     <div>
+      {error ? <p role="alert">{error}</p> : null}
+      {pending ? <p role="status">儲存判決中…</p> : null}
       <div className="board-status">
         <span>
           今批 <b>{units.length - decidedCount}</b> 未審 · {decidedCount} 已審
@@ -224,6 +236,7 @@ export function ReviewBoard({
               <QueueCard
                 key={`${key}-${i}`}
                 item={item}
+                disabled={pending}
                 verdict={item.scan_id ? verdictOf(key) : null}
                 aiResolved={aiResolved[key] ?? null}
                 focused={focusId !== undefined && focusId === focusedIdx}
@@ -231,7 +244,7 @@ export function ReviewBoard({
                 onFocus={() => focusId !== undefined && setFocusedIdx(focusId)}
                 onVerdict={(v) => {
                   const u = unitOf(key);
-                  if (u) decide(u, v);
+                  if (u) void decide(u, v);
                 }}
               />
             );
@@ -245,6 +258,7 @@ export function ReviewBoard({
             <ReceiptCard
               key={g.baseScanId}
               group={g}
+              disabled={pending}
               verdicts={verdicts}
               focusedIdx={focusedIdx}
               lineFocus={lineFocus}
@@ -254,7 +268,7 @@ export function ReviewBoard({
               }}
               onVerdictLine={(scanId, v) => {
                 const u = unitOf(noteKey(scanId, "line"));
-                if (u) decide(u, v);
+                if (u) void decide(u, v);
               }}
               wrongFields={wrongFields}
               onBlame={(scanId, fields) => {

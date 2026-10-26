@@ -16,6 +16,7 @@ export type ReviewNote = {
   note: string | null;
   reviewed_by: string | null;
   updated_at: string;
+  event_id: number | null;
 };
 
 // The human eyeball verdict. Stored inside the existing scan_review_notes
@@ -70,4 +71,15 @@ export function wrongFieldsFromNote(note?: ReviewNote): ReceiptField[] {
   if (!raw?.startsWith("wrong:")) return [];
   const picked = raw.slice("wrong:".length).split(",");
   return RECEIPT_FIELDS.filter((f) => picked.includes(f));
+}
+
+// Old notes predate event binding; do not carry them onto a later save.
+export function noteForEvent(
+  notes: Map<string, ReviewNote>, scanId: string, field: string, eventId: number | null, occurredAt: string,
+): ReviewNote | undefined {
+  const keys = field === "price" ? ["price", "original_price"] : [field];
+  const matches = keys.map((f) => notes.get(noteKey(scanId, f))).filter((n): n is ReviewNote => !!n && (
+    n.event_id != null ? n.event_id === eventId : Date.parse(n.updated_at) >= Date.parse(occurredAt)
+  ));
+  return matches.find((n) => n.reviewed_by === "human") ?? matches[0];
 }

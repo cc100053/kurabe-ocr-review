@@ -13,6 +13,8 @@ export type QueueSource = "suspicious" | "corrected";
 export type QueueItem = {
   source: QueueSource;
   scan_id: string | null;
+  event_id: number;
+  image_source: "explicit" | "legacy" | "none";
   field: string;
   product_name: string | null;
   image_url: string | null;
@@ -27,9 +29,7 @@ export type QueueItem = {
   // fields and on events from apps that did not send them.
   saved_tax_mode: string | null;
   saved_tax_rate: number | null;
-  // The only risk was a tag printing both 本体 and 税込, and the two numbers
-  // agree with the saved price/mode/rate: nothing left for a human to judge.
-  self_checked: boolean;
+
 };
 
 // Higher-risk flags to surface first (price/tax/food per the review doc).
@@ -116,27 +116,6 @@ export function savedTaxLabel(
     mode === "included" ? "含稅" : mode === "excluded" ? "不含稅" : null;
   if (!base) return null;
   return rate ? `${base} ${Math.round(rate * 100)}%` : base;
-}
-
-export const TAX_CONFLICT_FLAG = "tax_inclusive_exclusive_conflict";
-
-// Japanese tags routinely print both 本体 and 税込, which trips the app's
-// tax-conflict flag. It is self-verifying when the tag holds the saved price and
-// its counterpart at the saved rate (±1 yen for rounding): 本体 478 / 税込 525.8.
-export function taxPairConsistent(
-  evidence: string | null,
-  saved: string | null,
-  mode: string | null,
-  rate: number | null,
-): boolean {
-  const price = Number(saved);
-  if (!evidence || !price || !rate || (mode !== "included" && mode !== "excluded")) {
-    return false;
-  }
-  const other = mode === "excluded" ? price * (1 + rate) : price / (1 + rate);
-  const nums = (evidence.replace(/,/g, "").match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
-  const near = (target: number) => nums.some((n) => Math.abs(n - target) <= 1);
-  return near(price) && near(other);
 }
 
 // Tax basis derived from the tag evidence cues — mirrors the app's own logic
