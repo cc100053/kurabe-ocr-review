@@ -370,4 +370,4 @@ kbd {
 .pair-blockers p { margin: 4px 0 8px; }
 .pair-blocker { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--border); }
 .pair-blocker form { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
-.pair-blocker input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; min-width: 12em; }
+.pair-blocker input, .pair-blocker select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; min-width: 12em; }

@@ -61,10 +61,14 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           {blockers.map((b) => <div key={b.label} className="pair-blocker">
             <span>{b.label}：{b.groups.map((g) => `「${g.value}」${g.ids.map((id) => `#${id}`).join(" ")}`).join(" ≠ ")}</span>
             {b.field ? <form action={alignIdentityField.bind(null, q.id, b.field)}>
-              <input name="value" defaultValue={b.groups[0].value} list={`align-${q.id}-${b.field}`} maxLength={200} required aria-label={`${b.label}統一寫法`} />
-              <datalist id={`align-${q.id}-${b.field}`}>{b.groups.map((g) => <option key={g.value} value={g.value} />)}</datalist>
+              {b.field === "size_unit" ? <select name="value" defaultValue={b.groups[0].apply} aria-label={`${b.label}統一單位`}>
+                {b.groups.map((g) => <option key={g.value} value={g.apply}>{g.value}</option>)}
+              </select> : <>
+                <input name="value" defaultValue={b.groups[0].value} list={`align-${q.id}-${b.field}`} maxLength={200} required aria-label={`${b.label}統一寫法`} />
+                <datalist id={`align-${q.id}-${b.field}`}>{b.groups.map((g) => <option key={g.value} value={g.value} />)}</datalist>
+              </>}
               <button>全部改成此寫法</button>
-            </form> : <span className="muted">要逐筆對相修正（喺下面每筆記錄度）。</span>}
+            </form> : <span className="muted">數值唔同，要逐筆對相修正：打開下面「每筆記錄」→ 該記錄 →「修正此記錄身份欄位」。</span>}
           </div>)}
         </section>}
         {q.verdict ? <form action={undoIdentityPair} className="pair-verdicts">

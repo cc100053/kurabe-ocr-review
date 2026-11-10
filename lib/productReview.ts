@@ -63,14 +63,15 @@ export function aiAgrees(ai: string, verdict: string): boolean {
 // Mirrors public.normalize_product_search: NFKC, hiragana to katakana, lower case.
 const normalizeIdentity = (v: string) => v.normalize("NFKC").replace(/[\u3041-\u3096\u309d\u309e]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60)).toLowerCase();
 
-export const ALIGNABLE_FIELDS = ["brand", "base_product", "variant"] as const;
+export const ALIGNABLE_FIELDS = ["brand", "base_product", "variant", "size_unit"] as const;
 export type AlignableField = (typeof ALIGNABLE_FIELDS)[number];
-export type MergeBlocker = { label: string; field?: AlignableField; groups: { value: string; ids: number[] }[] };
+// `apply` is what the one-step fix writes when it differs from the shown value.
+export type MergeBlocker = { label: string; field?: AlignableField; groups: { value: string; ids: number[]; apply?: string }[] };
 
 // What review_product_identity's guard will reject: any two records of the pair
 // (either side, or inside one side) whose known values differ. Missing never blocks.
 export function mergeBlockers(records: IdentityRecord[]): MergeBlocker[] {
-  const text = (field: AlignableField) => (r: IdentityRecord) => { const v = r[field]?.trim(); return v ? [normalizeIdentity(v), v] : null; };
+  const text = (field: "brand" | "base_product" | "variant") => (r: IdentityRecord) => { const v = r[field]?.trim(); return v ? [normalizeIdentity(v), v] : null; };
   const checks: [string, AlignableField | undefined, (r: IdentityRecord) => string[] | null][] = [
     ["品牌", "brand", text("brand")], ["品名", "base_product", text("base_product")], ["款式 / 口味", "variant", text("variant")],
     ["容量 / 規格", undefined, (r) => r.size_value != null && r.size_value > 0 ? [`${r.size_value}|${r.size_unit}`, `${r.size_value}${r.size_unit ?? "（無單位）"}`] : null],
@@ -86,6 +87,13 @@ export function mergeBlockers(records: IdentityRecord[]): MergeBlocker[] {
       group.ids.push(r.id); groups.set(hit[0], group);
     }
     return groups.size > 1 ? [{ label, field, groups: [...groups.values()].sort((a, b) => b.ids.length - a.ids.length) }] : [];
+  }).map((b) => {
+    // Same number, different unit word (45pack vs 45ct) is a notation conflict the
+    // reviewer can settle in one step; different numbers stay per-record.
+    if (b.label !== "容量 / 規格") return b;
+    const sized = records.filter((r) => r.size_value != null && r.size_value > 0);
+    if (new Set(sized.map((r) => r.size_value)).size !== 1 || sized.some((r) => !r.size_unit)) return b;
+    return { ...b, field: "size_unit" as const, groups: b.groups.map((g) => ({ ...g, apply: sized.find((r) => r.id === g.ids[0])!.size_unit! })) };
   });
 }
 

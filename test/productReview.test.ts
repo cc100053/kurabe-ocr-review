@@ -73,3 +73,12 @@ test("alignment rewrites only differing known values and resends the other ident
   assert.deepEqual(updates, [{ id: 2, photo: record.image_url, values: {
     brand: "花王", base_product: "キュキュット", variant: "オレンジ", size_value: "700", size_unit: "ml", jan_code: null } }]);
 });
+
+test("a unit-only size conflict is alignable; different numbers are not", () => {
+  const pack = { ...record, size_value: 45, size_unit: "pack" }, ct = { ...record, id: 2, size_value: 45, size_unit: "ct" };
+  const [blocker] = mergeBlockers([pack, ct]);
+  assert.equal(blocker.field, "size_unit");
+  assert.deepEqual(blocker.groups, [{ value: "45pack", ids: [1], apply: "pack" }, { value: "45ct", ids: [2], apply: "ct" }]);
+  assert.deepEqual(alignmentTargets([pack, ct], "size_unit", "pack").updates.map((u) => [u.id, u.values.size_value, u.values.size_unit]), [[2, "45", "pack"]]);
+  assert.equal(mergeBlockers([pack, { ...ct, size_value: 50 }])[0].field, undefined);
+});
