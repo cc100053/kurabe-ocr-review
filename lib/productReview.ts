@@ -31,3 +31,31 @@ export function manualReviewEvidence(action: string, reviewId: number, recordId?
 export function representativeRecord(records: IdentityRecord[], imageUrl: string | null): IdentityRecord | undefined {
   return imageUrl ? records.find((r) => r.image_url === imageUrl) : undefined;
 }
+
+export type CompareRow = { label: string; left: string; right: string; state: "same" | "diff" | "unknown" | "info" };
+
+// Side-by-side identity fields for a pair. A side can hold several records, so
+// "same" needs exactly one agreeing value per side; a missing side is unknown,
+// never sameness. Price and shop are context only.
+export function comparePair(left: IdentityRecord[], right: IdentityRecord[]): CompareRow[] {
+  const size = (r: IdentityRecord) => r.size_value == null ? null : `${r.size_value}${r.size_unit ?? ""}`;
+  const price = (r: IdentityRecord) => r.price == null ? null : `¥${r.price.toLocaleString("ja-JP")}`;
+  const fields: [string, (r: IdentityRecord) => string | null, boolean][] = [
+    ["品牌", (r) => r.brand, true], ["品名", (r) => r.base_product, true], ["款式 / 口味", (r) => r.variant, true],
+    ["容量 / 規格", size, true], ["JAN", (r) => r.jan_code, true], ["價格", price, false], ["店舖", (r) => r.shop_name, false],
+  ];
+  const distinct = (records: IdentityRecord[], get: (r: IdentityRecord) => string | null) =>
+    [...new Map(records.map(get).filter((v): v is string => !!v?.trim()).map((v) => [v.trim().toLowerCase(), v.trim()])).values()];
+  return fields.map(([label, get, identity]) => {
+    const l = distinct(left, get), r = distinct(right, get);
+    const state = !identity ? "info" : !l.length || !r.length ? "unknown"
+      : l.length === 1 && r.length === 1 && l[0].toLowerCase() === r[0].toLowerCase() ? "same" : "diff";
+    return { label, left: l.join(" / ") || "—", right: r.join(" / ") || "—", state };
+  });
+}
+
+// The weekly agent answers "different" for a same-series pair (same_series is
+// human-only), so that combination counts as agreement.
+export function aiAgrees(ai: string, verdict: string): boolean {
+  return ai === verdict || (ai === "different" && verdict === "same_series");
+}

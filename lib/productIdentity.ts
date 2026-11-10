@@ -45,3 +45,11 @@ export async function getProductIdentityReviews(done: boolean): Promise<Identity
     return { ...review, sides } as IdentityReview;
   }));
 }
+
+export async function getIdentityCounts(): Promise<{ pending: number; unassessed: number }> {
+  await requireIdentityReviewer();
+  const pending = () => getSupabaseAdmin().from("product_identity_reviews").select("id", { count: "exact", head: true }).is("verdict", null);
+  const [all, unassessed] = await Promise.all([pending(), pending().is("ai_assessment", null)]);
+  if (all.error ?? unassessed.error) throw all.error ?? unassessed.error;
+  return { pending: all.count ?? 0, unassessed: unassessed.count ?? 0 };
+}
