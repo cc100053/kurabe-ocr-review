@@ -22,6 +22,8 @@ export async function requireIdentityReviewer() {
   }
 }
 
+export const IDENTITY_RECORD_COLUMNS = "id,image_url,product_name,name_key,brand,base_product,variant,size_value,size_unit,jan_code,price,original_price,is_tax_included,quantity,category_tag,shop_name,created_at";
+
 export async function getProductIdentityReviews(done: boolean): Promise<IdentityReview[]> {
   await requireIdentityReviewer();
   const admin = getSupabaseAdmin();
@@ -37,8 +39,9 @@ export async function getProductIdentityReviews(done: boolean): Promise<Identity
     const sides = await Promise.all([review.left_product_id, review.right_product_id].map(async (id) => {
       const product = products!.find((p) => p.id === id)!;
       const { data: records, error: recordError } = await admin.from("price_records")
-        .select("id,image_url,product_name,brand,base_product,variant,size_value,size_unit,jan_code,price,original_price,is_tax_included,quantity,category_tag,shop_name,created_at")
-        .eq("product_id", id).order("id", { ascending: false }).limit(5);
+        .select(IDENTITY_RECORD_COLUMNS)
+        // Every record can block a merge, so the pair needs them all (bounded for safety).
+        .eq("product_id", id).order("id", { ascending: false }).limit(100);
       if (recordError) throw recordError;
       return { ...product, records: records ?? [] };
     }));

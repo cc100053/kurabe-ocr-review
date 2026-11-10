@@ -1,5 +1,5 @@
 export type IdentityRecord = {
-  id: number; image_url: string | null; product_name: string;
+  id: number; image_url: string | null; product_name: string; name_key?: string | null;
   brand: string | null; base_product: string | null; variant: string | null;
   size_value: number | null; size_unit: string | null; jan_code: string | null;
   price: number | null; original_price: number | null; is_tax_included: boolean | null;
@@ -58,4 +58,49 @@ export function comparePair(left: IdentityRecord[], right: IdentityRecord[]): Co
 // human-only), so that combination counts as agreement.
 export function aiAgrees(ai: string, verdict: string): boolean {
   return ai === verdict || (ai === "different" && verdict === "same_series");
+}
+
+// Mirrors public.normalize_product_search: NFKC, hiragana to katakana, lower case.
+const normalizeIdentity = (v: string) => v.normalize("NFKC").replace(/[\u3041-\u3096\u309d\u309e]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60)).toLowerCase();
+
+export const ALIGNABLE_FIELDS = ["brand", "base_product", "variant"] as const;
+export type AlignableField = (typeof ALIGNABLE_FIELDS)[number];
+export type MergeBlocker = { label: string; field?: AlignableField; groups: { value: string; ids: number[] }[] };
+
+// What review_product_identity's guard will reject: any two records of the pair
+// (either side, or inside one side) whose known values differ. Missing never blocks.
+export function mergeBlockers(records: IdentityRecord[]): MergeBlocker[] {
+  const text = (field: AlignableField) => (r: IdentityRecord) => { const v = r[field]?.trim(); return v ? [normalizeIdentity(v), v] : null; };
+  const checks: [string, AlignableField | undefined, (r: IdentityRecord) => string[] | null][] = [
+    ["品牌", "brand", text("brand")], ["品名", "base_product", text("base_product")], ["款式 / 口味", "variant", text("variant")],
+    ["容量 / 規格", undefined, (r) => r.size_value != null && r.size_value > 0 ? [`${r.size_value}|${r.size_unit}`, `${r.size_value}${r.size_unit ?? "（無單位）"}`] : null],
+    ["名稱內規格", undefined, (r) => { const v = (r.name_key ?? "").split("|")[1]; return v ? [v, v] : null; }],
+    ["JAN", undefined, (r) => r.jan_code ? [r.jan_code, r.jan_code] : null],
+  ];
+  return checks.flatMap(([label, field, get]) => {
+    const groups = new Map<string, { value: string; ids: number[] }>();
+    for (const r of records) {
+      const hit = get(r);
+      if (!hit) continue;
+      const group = groups.get(hit[0]) ?? { value: hit[1], ids: [] };
+      group.ids.push(r.id); groups.set(hit[0], group);
+    }
+    return groups.size > 1 ? [{ label, field, groups: [...groups.values()].sort((a, b) => b.ids.length - a.ids.length) }] : [];
+  });
+}
+
+// Records to rewrite so one spelling is used across the pair. Empty values stay
+// empty (nothing was read, so nothing is claimed); a record without its own
+// photo cannot be corrected and is reported instead.
+export function alignmentTargets(records: IdentityRecord[], field: AlignableField, value: string) {
+  const differing = records.filter((r) => r[field]?.trim() && r[field]!.trim() !== value);
+  return {
+    skipped: differing.filter((r) => !r.image_url).map((r) => r.id),
+    updates: differing.filter((r) => r.image_url).map((r) => ({
+      id: r.id, photo: r.image_url!,
+      // The correction RPC replaces all six fields, so resend the untouched ones.
+      values: { brand: r.brand, base_product: r.base_product, variant: r.variant,
+        size_value: r.size_value == null ? null : String(r.size_value), size_unit: r.size_unit, jan_code: r.jan_code, [field]: value },
+    })),
+  };
 }

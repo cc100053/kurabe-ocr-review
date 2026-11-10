@@ -1,7 +1,7 @@
 import { MagnifiedPhoto } from "../MagnifiedPhoto";
 import { getIdentityCounts, getProductIdentityReviews } from "@/lib/productIdentity";
-import { aiAgrees, comparePair, recordFields, representativeRecord } from "@/lib/productReview";
-import { queueIdentityPairs, reviewIdentityPair, undoIdentityPair, correctIdentityRecord } from "./actions";
+import { aiAgrees, comparePair, mergeBlockers, recordFields, representativeRecord } from "@/lib/productReview";
+import { queueIdentityPairs, reviewIdentityPair, undoIdentityPair, correctIdentityRecord, alignIdentityField } from "./actions";
 
 export const dynamic = "force-dynamic";
 const verdictLabels: Record<string, string> = { same: "同款", different: "不同商品", same_series: "同系列、不同規格", cannot_tell: "無法確認" };
@@ -27,7 +27,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
     {reviews.map((q) => {
       const ai = q.ai_assessment;
       const rows = comparePair(q.sides[0].records, q.sides[1].records);
-      const hasDiff = rows.some((r) => r.state === "diff");
+      const blockers = q.verdict ? [] : mergeBlockers(q.sides.flatMap((p) => p.records));
       return <article key={q.id} className="identity-review">
         <header className="pair-head">
           <h2>#{q.id} · {reasonLabels[q.reason] ?? q.reason}</h2>
@@ -55,6 +55,18 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           {Array.isArray(ai.data_conflicts) && !!ai.data_conflicts.length && <p>資料衝突（合併前需核實）：{ai.data_conflicts.join("；")}</p>}
           <small className="muted">{ai.assessor} · {ai.assessed_at}</small>
         </details>}
+        {!!blockers.length && <section className="pair-blockers">
+          <strong>合併會被擋：以下記錄嘅資料唔一致</strong>
+          <p className="muted">真係唔同（例如容量）就唔好合併。只係寫法唔同（例如 花王 / Kao），可以一次過統一；每筆修改都有紀錄。</p>
+          {blockers.map((b) => <div key={b.label} className="pair-blocker">
+            <span>{b.label}：{b.groups.map((g) => `「${g.value}」${g.ids.map((id) => `#${id}`).join(" ")}`).join(" ≠ ")}</span>
+            {b.field ? <form action={alignIdentityField.bind(null, q.id, b.field)}>
+              <input name="value" defaultValue={b.groups[0].value} list={`align-${q.id}-${b.field}`} maxLength={200} required aria-label={`${b.label}統一寫法`} />
+              <datalist id={`align-${q.id}-${b.field}`}>{b.groups.map((g) => <option key={g.value} value={g.value} />)}</datalist>
+              <button>全部改成此寫法</button>
+            </form> : <span className="muted">要逐筆對相修正（喺下面每筆記錄度）。</span>}
+          </div>)}
+        </section>}
         {q.verdict ? <form action={undoIdentityPair} className="pair-verdicts">
           <input type="hidden" name="id" value={q.id} />
           <button>撤銷此決定</button>
@@ -63,7 +75,6 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           <button formAction={reviewIdentityPair.bind(null, q.id, "same_series")}>同系列、不同規格</button>
           <button formAction={reviewIdentityPair.bind(null, q.id, "different")}>不同商品</button>
           <button formAction={reviewIdentityPair.bind(null, q.id, "cannot_tell")}>無法確認</button>
-          {hasDiff && <span className="muted">有欄位唔同（≠）：合併會被拒絕，如果係讀錯請先喺下面修正。</span>}
         </form>}
         <details className="pair-more">
           <summary>每筆記錄 / 修正身份欄位 / 審查紀錄</summary>

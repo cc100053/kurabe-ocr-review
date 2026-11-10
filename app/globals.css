@@ -366,3 +366,8 @@ kbd {
 .pair-verdicts { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .identity-review form button.merge { border-color: #5ad17a; color: #5ad17a; font-weight: 700; }
 .pair-more { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.pair-blockers { border: 1px solid var(--warn); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; }
+.pair-blockers p { margin: 4px 0 8px; }
+.pair-blocker { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--border); }
+.pair-blocker form { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.pair-blocker input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; min-width: 12em; }
