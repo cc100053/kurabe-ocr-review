@@ -58,12 +58,11 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         {q.verdict ? <form action={undoIdentityPair} className="pair-verdicts">
           <input type="hidden" name="id" value={q.id} />
           <button>撤銷此決定</button>
-        </form> : <form action={reviewIdentityPair} className="pair-verdicts">
-          <input type="hidden" name="id" value={q.id} />
-          <button name="verdict" value="same" className="merge" disabled={q.sides.some((p) => !p.image_url)}>完全同款 → 合併</button>
-          <button name="verdict" value="same_series">同系列、不同規格</button>
-          <button name="verdict" value="different">不同商品</button>
-          <button name="verdict" value="cannot_tell">無法確認</button>
+        </form> : <form className="pair-verdicts">
+          <button formAction={reviewIdentityPair.bind(null, q.id, "same")} className="merge" disabled={q.sides.some((p) => !p.image_url)}>完全同款 → 合併</button>
+          <button formAction={reviewIdentityPair.bind(null, q.id, "same_series")}>同系列、不同規格</button>
+          <button formAction={reviewIdentityPair.bind(null, q.id, "different")}>不同商品</button>
+          <button formAction={reviewIdentityPair.bind(null, q.id, "cannot_tell")}>無法確認</button>
           {hasDiff && <span className="muted">有欄位唔同（≠）：合併會被拒絕，如果係讀錯請先喺下面修正。</span>}
         </form>}
         <details className="pair-more">

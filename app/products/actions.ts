@@ -13,10 +13,9 @@ export async function queueIdentityPairs() {
   revalidatePath("/products");
 }
 
-export async function reviewIdentityPair(form: FormData) {
+// Bound per button: the clicked button's name/value did not reach the action's FormData.
+export async function reviewIdentityPair(id: number, verdict: string) {
   await requireIdentityReviewer();
-  const id = Number(form.get("id"));
-  const verdict = String(form.get("verdict") ?? "");
   const evidence = manualReviewEvidence(verdict, id);
   const reviewer = "human";
   if (!Number.isSafeInteger(id) || id < 1 || !["same", "different", "same_series", "cannot_tell"].includes(verdict)) {
